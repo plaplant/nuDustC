@@ -28,7 +28,6 @@ class nuDust
   std::vector<std::string>        initial_elements;
   std::map<uint32_t, cell_input>  cell_inputs;
   std::vector<cell>               cells;
-  cell_input                      RScell;
   network               net;
   params                sputARR;
   std::vector<double>   init_size_bins; // sizes in the size dist
@@ -62,7 +61,6 @@ public:
   void account_for_pileUp();
   void gen_shock_array_frm_val();
   void create_simulation_cells();
-  void create_restart_cells(int cid);
   int get_element_index(const std::string& elem) const;
   void premake(const int s1, const int s2, const int sp, const int cell_id);
   void run();
