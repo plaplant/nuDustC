@@ -51,7 +51,7 @@ configuration::configuration() : desc ( "configuration" )
 
 
     // user specified shock parameters. shock parameters are applied to all cells regardless of depth
-    desc.add_options() ( "pile_up_factor", options::value<double> ( &pile_up_factor )->default_value ( NAN ), "shock pile up factor" );
+    desc.add_options() ( "pile_up_factor", options::value<double> ( &pile_up_factor )->default_value ( 1.0 ), "shock pile up factor" );
     desc.add_options() ( "shock_velo", options::value<double> ( &shock_velo )->default_value ( NAN ), "shock velocity" );
     desc.add_options() ( "shock_temp", options::value<double> ( &shock_temp )->default_value ( NAN ), "shock temperature" );
 
