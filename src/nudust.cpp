@@ -154,7 +154,6 @@ void
 nuDust::load_sizeDist()
 {
     // This loads just the input size distribution file. It get grain sizes and species included.
-    //PLOGD << "load size distribution";
     std::ifstream sd_file ( nu_config.sizeDist_file );
     std::string line_buffer;
     std::vector<std::string> line_tokens;
@@ -165,7 +164,7 @@ nuDust::load_sizeDist()
         std::getline ( sd_file, line_buffer );
         boost::split ( line_tokens, line_buffer, boost::is_any_of ( " \t" ), boost::token_compress_on );
         SD_grn_names.assign ( line_tokens.begin(), line_tokens.end() );
-        
+
         std::getline ( sd_file, line_buffer );
         boost::split ( line_tokens, line_buffer, boost::is_any_of ( " \t" ), boost::token_compress_on );
         
@@ -173,7 +172,7 @@ nuDust::load_sizeDist()
         {
             size_bins_init.push_back ( boost::lexical_cast<double> ( *it ));
         }
-        
+
         numBins = size_bins_init.size();
         std::vector<int> grn_idx(net.n_reactions);
         
@@ -186,7 +185,7 @@ nuDust::load_sizeDist()
                 }
             }
         }
-        
+
         while ( std::getline ( sd_file, line_buffer ) )
         {
             boost::split ( line_tokens, line_buffer, boost::is_any_of ( " \t" ), boost::token_compress_on );
@@ -587,107 +586,12 @@ nuDust::create_simulation_cells()
 {
   PLOGI << "Creating cells with input data";
 
-  // distribute the cells
-  int cells_per_rank = cell_inputs.size() / par_size;
-  int cell_rank_disp = par_rank * cells_per_rank;
-
-  int cell_end = (cell_rank_disp + cells_per_rank) < cell_inputs.size() ? cell_rank_disp + cells_per_rank : cell_inputs.size();
-
-  cell_end = cell_rank_disp + 10;
-
-  cells.reserve(cell_end - cell_rank_disp);
-//  for (const auto& ic: cell_inputs) {
-//    cells_buf.emplace_back(&net, &nu_config, ic.first, initial_elements, ic.second);
-//  }
-
-  auto it = cell_inputs.begin();
-  for(auto r = 0; r < cell_rank_disp; r++)
+  for ( const auto &ic : cell_inputs)
   {
-    it++;
+    auto cid  = ic.first;
+    cells.emplace_back ( &net, &sputARR, &nu_config, cid, initial_elements, cell_inputs[cid] );
   }
-  for(auto i = cell_rank_disp; i < cell_end; ++i)
-  {
-        if (not std::filesystem::exists(name+std::to_string ( it->first ) + ".dat"))
-        {
-            if ( not std::filesystem::exists(nameRS+std::to_string ( it->first ) + ".dat"))
-            {
-                auto cid = it->first;
-                cells.emplace_back ( &net, &sputARR, &nu_config, it->first, initial_elements, cell_inputs[cid] );
-            }
-            else
-            {
-                create_restart_cells(it->first);
-            }
-        }
-        it++;
-  }
-
-  PLOGI << "rank " << par_rank << " has " << cells.size() << " cells\n";
-}
-// todo :: need to edit to add in nucleation parameters from restart
-void
-nuDust::create_restart_cells(int cell_id)
-{
-    std::ifstream rs_file ( nameRS+std::to_string ( cell_id ) + ".dat" );
-    std::string line_buffer;
-    std::vector<std::string> line_tokens;
-    
-    if ( rs_file.is_open() )
-    {
-        std::getline ( rs_file, line_buffer );
-        boost::split ( line_tokens, line_buffer, boost::is_any_of ( " \t" ), boost::token_compress_on );
-        RScell.inp_cell_time = boost::lexical_cast<double> ( line_tokens[0] );
-
-        RScell.inp_init_abund.resize(initial_elements.size());
-        for(size_t gsID=0; gsID < initial_elements.size(); ++gsID)
-        {   
-            RScell.inp_init_abund[gsID] = cell_inputs[cell_id].inp_init_abund[gsID];
-        }
-        // edit this. it should read in the abundances from the file
-        RScell.inp_abund.resize(initial_elements.size());
-        for(size_t gsID=0; gsID < initial_elements.size(); ++gsID)
-        {   
-            RScell.inp_abund[gsID] = cell_inputs[cell_id].inp_abund[gsID];
-        }
-
-        std::getline ( rs_file, line_buffer );
-        boost::split ( line_tokens, line_buffer, boost::is_any_of ( "  \t" ), boost::token_compress_on );
-        for ( auto it = line_tokens.begin(); it != line_tokens.end(); ++it )
-        {
-            try{RScell.inp_vd.push_back ( boost::lexical_cast<double> ( *it ));}
-            catch(const std::exception& e){}
-        }
-
-        std::getline ( rs_file, line_buffer );
-        boost::split ( line_tokens, line_buffer, boost::is_any_of ( "  \t" ), boost::token_compress_on );
-        for ( auto it = line_tokens.begin(); it != line_tokens.end(); ++it )
-        {
-            try{RScell.inp_size_dist.push_back ( boost::lexical_cast<double> ( *it ));}
-            catch(const std::exception& e){}
-        }
-        
-        std::getline ( rs_file, line_buffer );
-        boost::split ( line_tokens, line_buffer, boost::is_any_of ( "  \t" ), boost::token_compress_on );
-        for ( auto it = line_tokens.begin(); it != line_tokens.end(); ++it )
-        {
-            try{RScell.inp_erosion_dadt.push_back ( boost::lexical_cast<double> ( *it ));}
-            catch(const std::exception& e){}
-        }
-
-        std::getline ( rs_file, line_buffer );
-        boost::split ( line_tokens, line_buffer, boost::is_any_of ( "  \t" ), boost::token_compress_on );
-        for ( auto it = line_tokens.begin(); it != line_tokens.end(); ++it )
-        {
-            try{RScell.inp_destBins.push_back ( boost::lexical_cast<double> ( *it ));}
-            catch(const std::exception& e){}
-        }
-    }
-    else
-    {
-        PLOGE << "Cannot open restart file " << nameRS+std::to_string ( cell_id ) + ".dat";
-        exit(1);
-    }
-    cells.emplace_back( &net, &sputARR, &nu_config, cell_id, initial_elements, RScell );
+  PLOGI << "Created " << cells.size() << " cells";
 }
 
 void
@@ -709,33 +613,26 @@ nuDust::run()
     if(nu_config.do_destruction==1 && nu_config.do_nucleation==1)
     {
         std::cout << "! Starting Nucleation and Destruction\n";
-        for (auto i = 0; i < cells.size(); ++i)
-        {
-            cells[i].solve();
-        }
     }
     else if(nu_config.do_nucleation==1)
     {
         std::cout << "! Starting Nucleation\n";
-        for (auto i = 0; i < cells.size(); ++i)
-        {
-            cells[i].solve();
-        }
     }
     else if(nu_config.do_destruction==1)
     {
         std::cout << "! Starting Destruction\n";
-        for (auto i = 0; i < cells.size(); ++i)
-        {
-            cells[i].solve();
-        }
     }
     else
     {
         std::cout << "! destruction and nucleation were both not selected. \n";
         std::cout << "! Try again\n";
     }
-    
+
+    for (auto i = 0; i < cells.size(); ++i)
+    {
+        PLOGI << i;
+        cells[i].solve();
+    }
     
     PLOGI << "Leaving main integration loop";
 }
