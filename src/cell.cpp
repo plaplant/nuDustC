@@ -55,12 +55,11 @@ cell::cell ( network* n, params* sputARR, configuration* con, uint32_t id, const
   cell_st.numReact = net->n_nucleation_reactions;
   cell_st.numBins = config->bin_number;
   cell_st.numGas = init_s.size();
-  cell_st.numSpec = net->n_species;
   set_init_data(init_s, input_data);
   set_env_data(input_data);
   cell_st.parts.resize(cell_st.numReact);
   reaction_switch.resize(cell_st.numReact);
-  cell_st.len_abund_and_mom = cell_st.numSpec + cell_st.numReact * N_MOMENTS;
+  cell_st.len_abund_and_mom = cell_st.numGas + cell_st.numReact * N_MOMENTS;
   std::fill(reaction_switch.begin(), reaction_switch.end(), true);
 }
 
@@ -69,27 +68,24 @@ void
 cell::set_init_data(const spec_v& init_s, const cell_input& init_data)
 {
   using constants::N_MOMENTS;
-  cell_st.init_abund.resize(cell_st.numSpec);
+  cell_st.init_abund.resize(cell_st.numGas);
   std::fill(cell_st.init_abund.begin(), cell_st.init_abund.end(), 0.0E0);
+  // add moments to solution vector
+  cell_st.abund_moments_sizebins.resize(cell_st.numGas + cell_st.numReact * N_MOMENTS + cell_st.numBins * cell_st.numReact);
+  std::fill(cell_st.abund_moments_sizebins.begin(),cell_st.abund_moments_sizebins.end(),0.0);
 
   for (size_t i = 0; i < cell_st.numGas; ++i) {
     auto idx = net->get_species_index(init_s[i]);
     if (idx != -1) {
-      cell_st.init_abund[idx] = init_data.inp_abund[i];
+      cell_st.init_abund[idx] = init_data.inp_init_abund[i];
+      cell_st.abund_moments_sizebins[idx] = cell_st.init_abund[idx];
     }
   }
-
-  // added moments to solution vector
-  cell_st.abund_moments_sizebins.resize(cell_st.numSpec + cell_st.numReact * N_MOMENTS + cell_st.numBins * cell_st.numReact);
-  // add abundances to solution vector
-  for (size_t idx = 0; idx < cell_st.numSpec; idx++) {
-    cell_st.abund_moments_sizebins[idx] = cell_st.init_abund[idx];
-  }
   // add size bins to solution vector
-  for (size_t idx = 0; idx < cell_st.numBins * cell_st.numReact; idx++) {
+  for (size_t idx = 0; idx < cell_st.numBins*cell_st.numReact; idx++) {
     cell_st.abund_moments_sizebins[idx+cell_st.len_abund_and_mom] = init_data.inp_size_dist[idx];
   }
-
+  
   // vectors for tracking multiple grain values. makes printout easier
   cell_st.cbars.resize(net->n_nucleation_reactions);
   cell_st.S.resize(net->n_nucleation_reactions);
@@ -118,10 +114,7 @@ cell::set_env_data(const cell_input& input_data)
                      input_data.inp_volumes.end());
   env_rho.assign(input_data.inp_rho.begin(), input_data.inp_rho.end());
   env_pressure.assign(input_data.inp_pressure.begin(),input_data.inp_pressure.end());
-  env_shock_times.assign(input_data.inp_shock_times_arr.begin(),input_data.inp_shock_times_arr.end());
-  env_shock_bool.assign(input_data.inp_shock_bool_arr.begin(),input_data.inp_shock_bool_arr.end());
-  env_shock_velo.assign(input_data.inp_shock_velo_arr.begin(),input_data.inp_shock_velo_arr.end());
-
+    
   cell_st.volume_0      = env_volumes[0];
   std::vector<double> times = env_times;
   env_temp_interp = makima(std::move(times), std::move(env_temp));
@@ -131,11 +124,6 @@ cell::set_env_data(const cell_input& input_data)
   env_rho_interp     = makima(std::move(times2), std::move(env_rho));
   std::vector<double> times5 = env_times;
   env_pressure_interp = makima(std::move(times5), std::move(env_pressure));
-
-  std::vector<double> Stimes = env_shock_times;
-  env_shock_bool_interp = makima(std::move(Stimes), std::move(env_shock_bool));
-  std::vector<double> Stimes1 = env_shock_times;
-  env_shock_velo_interp = makima(std::move(Stimes1), std::move(env_shock_velo));
 }
 
 // check there's no nans or negatives in the solution
@@ -162,6 +150,8 @@ cell::solve()
   auto dt0             = config->ode_dt_0;
   auto rkd             = runge_kutta_dopri5<std::vector<double>>{};
   auto stepper         = make_dense_output(abs_err, rel_err, max_dt, rkd);
+  auto dumpN           = config->io_disk_n_steps;
+  auto RSN             = config->io_screen_n_steps;
   size_t n_solve_steps   = 0;
   size_t n_stepper_reset = 0;
   cell_st.kT = k_B * cell_st.temperature; // ergs
@@ -169,8 +159,8 @@ cell::solve()
   cell_st.invkT = 1.0 / cell_st.kT;
   stepper.initialize(cell_st.abund_moments_sizebins, time_start, dt0);
   calc_state_vars(cell_st.abund_moments_sizebins, time_start);
-
   CellObserver observer(cid,net,config);
+  observer.init_dump(cell_st);
   while ((stepper.current_time() < time_end)) {
     auto t0               = stepper.current_time();
     auto dt               = stepper.current_time_step();
@@ -200,6 +190,14 @@ cell::solve()
     if (n_stepper_reset > CELL_MAXIMUM_STEPPER_RESETS) {
       PLOGI << "TOO MANY RESTARTS, exiting at t = " << stepper.current_time();
       break;
+    }
+    if(n_solve_steps%dumpN==0.0)
+    {
+      observer.dump_data(cell_st);
+    }
+    if(n_solve_steps%RSN==0.0)
+    {
+      observer.restart_dump(cell_st);
     }
     ++n_solve_steps;
   }
@@ -399,7 +397,7 @@ void cell::add_new_grn(const std::vector<double>& x)
   {
     if (cell_st.parts[gidx].lnS > 0.0) 
     {
-      auto momIDX = cell_st.numSpec + constants::N_MOMENTS * gidx;
+      auto momIDX = cell_st.numGas + constants::N_MOMENTS * gidx;
       if ((x[momIDX + 3] > 0.0) && (x[momIDX + 0] > 0.0)) 
       {
         auto reaction_idx = net->nucleation_reactions_idx[gidx];
@@ -510,7 +508,6 @@ void cell::destroy()
 
   for ( auto gidx = 0; gidx < cell_st.numReact; ++gidx )
   {
-
     for( int sidx =0; sidx < cell_st.numBins; ++sidx)
     {
         double dadt = 0.0;
@@ -565,7 +562,7 @@ double cell::calc_dvdt(const double& cross_sec, const double& vd, const int grni
         // units of # of particles * mass in grams. might just need the mass not the * # of particles
         double m = sputARR->miGRAMS[gsID]; // should be in grams now
         double s2 = m * square(vd) / (2.*cell_st.kT); // assumes cgs units
-        G_tot += cell_st.abund_moments_sizebins[gsID] * std::sqrt(s2) * eight_threeRootPi * 
+        G_tot += cell_st.abund_moments_sizebins[cell_st.len_abund_and_mom+gsID] * std::sqrt(s2) * eight_threeRootPi * 
                 std::sqrt(1.+s2*ninePi_sixyfour);
     }
     auto yield = sputARR->three_2Rhod[grnid] * cell_st.kT/(cross_sec)*G_tot;
@@ -594,8 +591,22 @@ void cell::rebin(const std::vector<double>& x, std::vector<double>& dxdt)
     for (size_t bidx = 0; bidx < cell_st.numBins; ++bidx)
     {
       auto idx = (gidx*cell_st.numBins)+bidx;
-      if (cell_st.abund_moments_sizebins[cell_st.len_abund_and_mom + idx]!=0.0) continue;
+      if (cell_st.abund_moments_sizebins[cell_st.len_abund_and_mom + idx]==0.0) continue;
       // move up a bin
+      if(cell_st.grn_sizes[bidx]+cell_st.runningTot_size_change[idx] < cell_st.edges[bidx+1])
+      {
+        //moving down a bin
+        if(bidx==0)continue;
+        else
+        {
+          double binWidth = cell_st.edges[bidx+1]-cell_st.edges[bidx];
+          double lowerBinWidth = cell_st.edges[bidx]-cell_st.edges[bidx-1];
+          binsMoveDown[bidx-1] = cell_st.abund_moments_sizebins[cell_st.len_abund_and_mom + idx]*(binWidth/lowerBinWidth);
+          cell_st.runningTot_size_change[idx] = 0.0;
+        }
+        cell_st.rebin_chng[bidx] -= 1.0;
+        cell_st.rebin_chng[bidx-1] += 1.0;
+      }
       if(cell_st.grn_sizes[bidx]+cell_st.runningTot_size_change[idx] > cell_st.edges[bidx+1])
       {
         if(bidx==cell_st.numBins-1) continue;
@@ -609,29 +620,12 @@ void cell::rebin(const std::vector<double>& x, std::vector<double>& dxdt)
         cell_st.rebin_chng[bidx] -= 1.0;
         cell_st.rebin_chng[bidx+1] += 1.0;
       }
-      else
-      {
-        //moving down a bin
-        if(cell_st.grn_sizes[bidx]+cell_st.runningTot_size_change[idx] < cell_st.edges[bidx+1])
-        {
-          if(bidx==0)continue;
-          else
-          {
-            double binWidth = cell_st.edges[bidx+1]-cell_st.edges[bidx];
-            double lowerBinWidth = cell_st.edges[bidx]-cell_st.edges[bidx-1];
-            binsMoveDown[bidx-1] = cell_st.abund_moments_sizebins[cell_st.len_abund_and_mom + idx]*(binWidth/lowerBinWidth);
-            cell_st.runningTot_size_change[idx] = 0.0;
-          }
-          cell_st.rebin_chng[bidx] -= 1.0;
-          cell_st.rebin_chng[bidx-1] += 1.0;
-        }
-      }
     }
     // now update the size bins
     for (size_t bidx = 0; bidx < cell_st.numBins; ++bidx)
     {
       auto idx = (gidx*cell_st.numBins)+bidx;
-      cell_st.abund_moments_sizebins[cell_st.len_abund_and_mom + idx] += binsMoveUp[bidx]+binsMoveDown[bidx];
+      dxdt[cell_st.len_abund_and_mom + idx] += binsMoveUp[bidx]+binsMoveDown[bidx];
     }
   }
 }
@@ -655,7 +649,7 @@ cell::operator()(const std::vector<double>& x, std::vector<double>& dxdt, const 
   add_new_grn(x);
   for (size_t i = 0; i < cell_st.numReact; ++i) {
     if ((cell_st.parts[i].is_nucleating) && (cell_st.ncrit[i] > 2.0)) {
-      auto gidx   = cell_st.numSpec + N_MOMENTS * i;
+      auto gidx   = cell_st.numGas + N_MOMENTS * i;
       dxdt[gidx] = cell_st.Js[i] / cell_st.cbars[i];
       for (int j = 1; j < N_MOMENTS; ++j) {
         dxdt[gidx + j] =
@@ -670,7 +664,7 @@ cell::operator()(const std::vector<double>& x, std::vector<double>& dxdt, const 
     }
   }
 
-  for (size_t i = 0; i < cell_st.numSpec; ++i)
+  for (size_t i = 0; i < cell_st.numGas; ++i)
     dxdt[i] += cell_st.drho / cell_st.rho * x[i];
   for (size_t i = 0; i < cell_st.numReact; ++i) {
     auto reaction_idx = net->nucleation_reactions_idx[i];
