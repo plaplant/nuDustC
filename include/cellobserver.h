@@ -19,13 +19,14 @@ class CellObserver
 {
   std::size_t cid;
   
-
   uint32_t num_nuc;
   uint32_t num_spec;
   uint32_t numBins;
   std::string modNum;
   std::string   ofname;
   std::string   RSname;
+
+  std::string    grnNames="";
 
 private:
 
@@ -43,9 +44,9 @@ private:
 public:
   CellObserver(std::size_t cid, const network* net, configuration* con);
   virtual ~CellObserver() {}
-
+  void init_dump(const cell_state& s);
   void operator()(const cell_state& s);
-  void dump_data();
-  void restart_dump();
+  void dump_data(const cell_state& s);
+  void restart_dump(const cell_state& s);
   void finalSave(const cell_state& s);
 };
