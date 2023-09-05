@@ -61,6 +61,7 @@ nuDust::nuDust ( const std::string &config_file, int sz, int rk) : par_size(sz),
         }
         if(!isnan(nu_config.shock_velo))
         {
+            PLOGI << "creating shock";
             // create shock velo and temp arrays from user specifies shock temp and velocity
             gen_shock_array_frm_val();
         }
@@ -172,8 +173,14 @@ nuDust::load_sizeDist()
         {
             size_bins_init.push_back ( boost::lexical_cast<double> ( *it ));
         }
-
         numBins = size_bins_init.size();
+        double low = std::floor(std::log10(size_bins_init[0]));
+        double high = std::floor(std::log10(size_bins_init[numBins-1]))+1;
+        auto expDel = (high - low)/static_cast<double>(numBins);
+        init_bin_edges.resize(numBins+1);
+        std::generate(init_bin_edges.begin(), init_bin_edges.end(), [&, n = 0] () mutable { return std::pow(10.,low+static_cast<double>(n++)*expDel); } );
+
+        
         std::vector<int> grn_idx(net.n_reactions);
         
         // match grians: network ID with input file ID
@@ -185,7 +192,7 @@ nuDust::load_sizeDist()
                 }
             }
         }
-
+        
         while ( std::getline ( sd_file, line_buffer ) )
         {
             boost::split ( line_tokens, line_buffer, boost::is_any_of ( " \t" ), boost::token_compress_on );
@@ -195,7 +202,8 @@ nuDust::load_sizeDist()
             std::vector<double> input_SD;
             cell_inputs[cell_id].inp_binSizes.resize(numBins);
             std::copy(size_bins_init.begin(),size_bins_init.end(),cell_inputs[cell_id].inp_binSizes.begin());
-
+            cell_inputs[cell_id].inp_binEdges.resize(numBins+1);
+            std::copy(init_bin_edges.begin(),init_bin_edges.end(),cell_inputs[cell_id].inp_binEdges.begin());
             for ( auto it = line_tokens.begin() + 2; it != line_tokens.end(); ++it )
             {
                 try
@@ -279,7 +287,6 @@ nuDust::load_initial_abundances()
             {
                 cell_inputs[cell_id].inp_init_abund.push_back(boost::lexical_cast<double>(*it));
             }
-
             // only add an extra spot for CO if it isn't in the input abundance file
             if(missingCO)
             {
@@ -295,13 +302,15 @@ nuDust::load_initial_abundances()
             premake(Si_idx, O_idx, SiO_idx, cell_id);
         }
         gen_abundances_vector();
+        PLOGI << cell_inputs[1].inp_init_abund[0];
+        PLOGI << "-------";
     }
     else
     {
         PLOGE << "Cannot open abundance file " << nu_config.abundance_file;
         exit(1);
     }
-    PLOGI << "loaded abundance file";
+    PLOGI << "loaded abundance file. loaded " << initial_elements.size() << " abundances.";
 }
 
 void
@@ -347,12 +356,13 @@ nuDust::account_for_pileUp()
     for ( const auto &ic : cell_inputs)
     {
         auto cell_id = ic.first;
-        for (size_t idx = 0; idx < net.n_species; idx++) 
+        for (size_t idx = 0; idx < initial_elements.size(); idx++) 
         {
             cell_inputs[cell_id].inp_abund[idx] *= pileUpFactor * std::pow(cell_inputs[cell_id].inp_shock_time/cell_inputs[cell_id].inp_cell_time,-3.0);
             cell_inputs[cell_id].inp_init_abund[idx] *= pileUpFactor * std::pow(cell_inputs[cell_id].inp_shock_time/cell_inputs[cell_id].inp_cell_time,-3.0);
         }
     }
+    PLOGI << cell_inputs[1].inp_init_abund[0] << " after adjust for time";
 }
 
 void
@@ -577,8 +587,8 @@ nuDust::load_outputFL_names()
     std::string binNum = binNumObj.str();
     std::string modNum = nu_config.mod_number;
 
-    name = "output/mod_" + modNum+"/cmNoCool_B"+binNum+"_m"+modNum+"_"+net.network_label +"_";    
-    nameRS = "restart/mod_" + modNum+"/restartNC_B"+binNum+"_m"+modNum+"_"+net.network_label +"_";  
+    name = "output/B"+binNum+"_"+net.network_label +"_";    
+    nameRS = "restart/restart_B"+binNum+"_"+net.network_label +"_";  
 }
 
 void
@@ -588,8 +598,7 @@ nuDust::create_simulation_cells()
 
   for ( const auto &ic : cell_inputs)
   {
-    auto cid  = ic.first;
-    cells.emplace_back ( &net, &sputARR, &nu_config, cid, initial_elements, cell_inputs[cid] );
+    cells.emplace_back ( &net, &sputARR, &nu_config, ic.first, initial_elements, ic.second );
   }
   PLOGI << "Created " << cells.size() << " cells";
 }
@@ -598,15 +607,6 @@ void
 nuDust::run()
 {
     size_t max_now = cells.size();    
-
-    /*#pragma omp parallel num_threads(1)
-    {
-        #pragma omp for nowait
-        for(size_t i=0; i<max_now; ++i)
-        {
-            cells[i].solve();
-        }
-    }*/
 
     PLOGI << "Entering main integration loop";
 
@@ -630,7 +630,6 @@ nuDust::run()
 
     for (auto i = 0; i < cells.size(); ++i)
     {
-        PLOGI << i;
         cells[i].solve();
     }
     
