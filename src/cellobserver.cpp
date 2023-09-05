@@ -29,50 +29,65 @@ CellObserver::CellObserver(std::size_t cid,const network* net, configuration* co
   modNum = con->mod_number; 
   m_nstore = con->io_disk_n_steps;
   m_ndump = con->io_screen_n_steps;
-  ofname = "output/mod_" + modNum+"/cmNoCool_B"+std::to_string(numBins)+"_m"+modNum+"_"+net->network_label +"_"+std::to_string(cid)+".dat";    
-  RSname = "restart/mod_" + modNum+"/restartNC_B"+std::to_string(numBins)+"_m"+modNum+"_"+net->network_label +"_"+std::to_string(cid)+".dat";   
+  ofname = "output/B"+std::to_string(numBins)+"_"+net->network_label +"_"+std::to_string(cid)+".dat";    
+  RSname = "restart/restart_B"+std::to_string(numBins)+"_"+net->network_label +"_"+std::to_string(cid)+".dat"; 
+
+  for(auto gn_id =0; gn_id < num_nuc; gn_id++)
+  {
+      grnNames += net->reactions[gn_id].prods[0] +" ";
+  }  
+}
+
+void CellObserver::init_dump(const cell_state& s)
+{
+    m_state = s;
+    ofs.open(ofname);
+    ofs << grnNames << "\n";
+
+    boost::format fmt ( "%1$14e " );
+    boost::format fmtL("%1$9e ");
+
+    for(double &val: m_state.grn_sizes)
+    {
+      ofs << fmt % val << " ";
+    }
+    ofs << "\n";
+    for(double &val: m_state.abund_moments_sizebins)
+    {
+      ofs << fmtL % val << " ";
+    }
+    ofs << "\n";
+    ofs.close();
 }
 
 // write data to file
 void
-CellObserver::dump_data()
+CellObserver::dump_data(const cell_state& s)
 {
+  m_state = s;
   ofs.open(ofname, std::ofstream::app);
   boost::format fmt("%1$5e ");
-
-
   boost::format fmtL("%1$9e ");
 
-  ofs << fmtL % m_state.time << "\n";
-  for(double &val: m_state.sizeBins)
-    ofs << fmtL % val << " ";
-  ofs << "\n";
+  oRS << fmtL % m_state.time << "\n";
+  for(double &val: m_state.abund_moments_sizebins)
+    oRS << fmtL % val << " ";
+  oRS << "\n";
 
   ofs.close();
 }
 
 // write data to restart file
 void
-CellObserver::restart_dump ()
+CellObserver::restart_dump (const cell_state& s)
 {
+  m_state = s;
   oRS.open(RSname);
   boost::format fmt("%1$5e ");
   boost::format fmtL("%1$9e ");
 
   oRS << fmtL % m_state.time << "\n";
-  for(double &val: m_state.init_abund)
-    oRS << fmtL % val << " ";
-  oRS << "\n";
   for(double &val: m_state.abund_moments_sizebins)
-    oRS << fmtL % val << " ";
-  oRS << "\n";
-  for(double &val: m_state.vd)
-    oRS << fmtL % val << " ";
-  oRS << "\n";
-  for(double &val: m_state.sizeBins)
-    oRS << fmtL % val << " ";
-  oRS << "\n";
-  for(double &val: m_state.runningTot_size_change)
     oRS << fmtL % val << " ";
   oRS << "\n";
 
@@ -86,14 +101,15 @@ CellObserver::operator()(const cell_state& s)
   ++n_called;
   if (n_called % m_nstore == 0) {
     m_state = s;
-    dump_data();
-    restart_dump();
+    dump_data(s);
+    restart_dump(s);
   }
 }
 
 // final writing of data
 void CellObserver::finalSave (const cell_state& s)
 {   
-  dump_data();
+  m_state = s;
+  dump_data(s);
   boost::filesystem::remove(RSname);
 }
