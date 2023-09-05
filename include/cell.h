@@ -56,9 +56,6 @@ struct cell_input
   std::vector<double> inp_velo;
   std::vector<double> inp_x_cm;
 
-  // nucleation
-  std::vector<double> inp_dadt;
-
   // destruction 
   std::vector<double> inp_erosion_dadt;
   std::vector<double> inp_destBins;
@@ -150,7 +147,6 @@ struct cell_state
   int numBins;
   int sd_len;
   int numGas;
-  int numSpec; 
 
   int len_abund_and_mom;
 
