@@ -525,7 +525,7 @@ void cell::destroy()
                 double s_i2 = sputARR->miGRAMS[gsID] * onehalf * cell_st.invkT * square(cell_st.vd[idx]);
                 if( s_i2 > ten) 
                 {
-                    dadt +=  NonTherm(sidx,gidx,gsID);
+                    dadt +=  NonTherm(sidx+cell_st.len_abund_and_mom,gidx,gsID);
                 }
                 else 
                 {
