@@ -1,0 +1,284 @@
+/*© 2023. Triad National Security, LLC. All rights reserved.
+This program was produced under U.S. Government contract 89233218CNA000001 for Los Alamos
+National Laboratory (LANL), which is operated by Triad National Security, LLC for the U.S.
+Department of Energy/National Nuclear Security Administration. All rights in the program are.
+reserved by Triad National Security, LLC, and the U.S. Department of Energy/National Nuclear
+Security Administration. The Government is granted for itself and others acting on its behalf a
+nonexclusive, paid-up, irrevocable worldwide license in this material to reproduce, prepare.
+derivative works, distribute copies to the public, perform publicly and display publicly, and to permit.
+others to do so.*/
+
+
+/*#include <algorithm>
+#include <boost/multi_array.hpp>
+#include <plog/Log.h>
+#include <string>
+#include <vector>
+using boost::extents;
+using boost::multi_array;
+
+#include "H5Cpp.h"
+#include "cell.h"
+#include "cellobserver.h"
+#include "network.h"
+
+#include <hdf5.h>
+
+
+using namespace H5;
+int count = 1;
+
+CellObserver::CellObserver(std::vector<std::vector<double>>& states,
+                           std::vector<double>& times,
+                           std::vector<cell_state>& statevars,
+                           uint32_t store_every_n,
+                           uint32_t dump_every_n,
+                           size_t cid,
+                           const network* net)
+  : m_states(states), m_times(times), m_vars(statevars),
+    m_nstore(store_every_n), m_ndump(dump_every_n), n_called(0)
+{
+  num_nuc  = net->n_nucleation_reactions;
+  num_spec = net->n_species;
+  cellID   = cid;
+
+  // const H5std_string FILE_NAME(net->network_label + "_" + std::to_string (
+  // cid ) + ".h5" ); H5File file( FILE_NAME, H5F_ACC_TRUNC );
+
+  hfname = net->network_label + "_" + std::to_string(cid) + ".h5";
+  // H5File file(hfname, H5F_ACC_TRUNC);
+  H5File* file = new H5File(hfname, H5F_ACC_TRUNC);
+
+  int rank = 1;
+
+  std::vector<double> grn_size = m_vars[0].grn_sizes;
+
+  const int FSPACE_RANK = 1;
+  const int FSPACE_DIM1 = grn_size.size();
+
+  hsize_t adim[] = { m_states[0].size() };
+  DataSpace aspace(FSPACE_RANK, adim);
+  const H5std_string abun_NAME("initial_abundances");
+  DataSet* dataAbun = new DataSet(
+    file->createDataSet(abun_NAME, PredType::NATIVE_DOUBLE, aspace));
+  dataAbun->write(m_states[0].data(), PredType::NATIVE_DOUBLE, aspace);
+  aspace.close();
+  dataAbun->close();
+
+
+  hsize_t fdim[] = { grn_size.size() };
+  DataSpace fspace(FSPACE_RANK, fdim);
+  const H5std_string DATASET_NAME("grn_sizes");
+  DataSet* dataset = new DataSet(
+    file->createDataSet(DATASET_NAME, PredType::NATIVE_DOUBLE, fspace));
+  dataset->write(grn_size.data(), PredType::NATIVE_DOUBLE, fspace);
+  fspace.close();
+  dataset->close();
+
+  std::vector<std::string> spec_name = net->species;
+  hsize_t fdim2[]                    = { spec_name.size() };
+  const H5std_string DATASET_NAME2("spec_names");
+  DataSpace fspace2(FSPACE_RANK, fdim2);
+  StrType strType(H5::PredType::C_S1, H5T_VARIABLE);
+  DataSet* dataset2 =
+    new DataSet(file->createDataSet(DATASET_NAME2, strType, fspace2));
+  char** stringListCstr = new char*[spec_name.size()];
+  for (int i = 0; i < spec_name.size(); i++) {
+    stringListCstr[i] = new char[spec_name[i].size() + 1];
+    strcpy(stringListCstr[i], spec_name[i].c_str());
+  }
+  dataset2->write(stringListCstr, strType, fspace2);
+  dataset2->close();
+  fspace2.close();
+
+  std::vector<std::string> grn_name = net->grn_names;
+  hsize_t fdim3[]                   = { grn_name.size() };
+  const H5std_string DATASET_NAME3("grn_names");
+  DataSpace fspace3(FSPACE_RANK, fdim3);
+  DataSet* dataset3 =
+    new DataSet(file->createDataSet(DATASET_NAME3, strType, fspace3));
+  char** stringListCstr3 = new char*[grn_name.size()];
+  for (int i = 0; i < grn_name.size(); i++) {
+    stringListCstr3[i] = new char[grn_name[i].size() + 1];
+    strcpy(stringListCstr3[i], grn_name[i].c_str());
+  }
+  dataset3->write(stringListCstr3, strType, fspace3);
+  fspace3.close();
+  dataset3->close();
+  file->close();
+}
+
+void
+CellObserver::dump_abundances()
+{
+  /*
+  // reopen the file and group in the file.
+  file = new H5File( FILE_NAME, H5F_ACC_RDWR );
+  group = new Group( file->openGroup( "Data" ));
+  */
+  /*
+  PLOGI << "in dump";
+  H5File* file = new H5File(hfname.c_str(), H5F_ACC_RDWR);
+  Group* group = new Group(file->createGroup("chunk" + std::to_string(count)));
+  count += 1;
+  hsize_t fdim[] = { m_times.size() };
+  DataSpace fspace(1, fdim);
+
+  DataSet* dataset =
+    new DataSet(group->createDataSet("times", PredType::NATIVE_DOUBLE, fspace));
+  dataset->write(m_times.data(), PredType::NATIVE_DOUBLE, fspace);
+  dataset->close();
+
+  dataset =
+    new DataSet(group->createDataSet("dt", PredType::NATIVE_DOUBLE, fspace));
+  dataset->write(m_dt.data(), PredType::NATIVE_DOUBLE, fspace);
+  dataset->close();
+
+  int size    = m_times.size();
+  int numBins = m_vars[0].numBins;
+  std::vector<double> cbar_(num_nuc);
+  std::vector<double> S_(num_nuc);
+  std::vector<double> Js_(num_nuc);
+  std::vector<double> ncrit_(num_nuc);
+  std::vector<double> growth_(num_nuc);
+  std::vector<double> temp(size);
+  std::vector<double> vol(size);
+  std::vector<std::vector<double>> cbar(size, std::vector<double>(num_nuc));
+  std::vector<std::vector<double>> S(size, std::vector<double>(num_nuc));
+  std::vector<std::vector<double>> Js(size, std::vector<double>(num_nuc));
+  std::vector<std::vector<double>> ncrit(size, std::vector<double>(num_nuc));
+  std::vector<std::vector<double>> growth(size, std::vector<double>(num_nuc));
+
+  std::vector<std::vector<std::vector<double>>> dest(
+    size,
+    std::vector<std::vector<double>>(num_nuc, std::vector<double>(numBins)));
+  std::vector<std::vector<std::vector<double>>> sizeBins(
+    size,
+    std::vector<std::vector<double>>(num_nuc, std::vector<double>(numBins)));
+  std::vector<std::vector<std::vector<double>>> moments(
+    size, std::vector<std::vector<double>>(num_nuc, std::vector<double>(4)));
+  std::vector<std::vector<double>> dest_(
+    std::vector<std::vector<double>>(num_nuc, std::vector<double>(numBins)));
+  std::vector<std::vector<double>> sizeBins_(
+    std::vector<std::vector<double>>(num_nuc, std::vector<double>(numBins)));
+  std::vector<std::vector<double>> moments_(
+    std::vector<std::vector<double>>(num_nuc, std::vector<double>(4)));
+
+  std::vector<double> dest__(numBins);
+  std::vector<double> sizeBins__(numBins);
+  std::vector<double> moments__(4);
+  for (auto idx = 0; idx < m_times.size(); ++idx) {
+    temp[idx] = m_vars[idx].temperature;
+    vol[idx]  = m_vars[idx].volume;
+    for (int gidx = 0; gidx < num_nuc; ++gidx) {
+      cbar_[gidx]   = m_vars[idx].cbars[gidx];
+      S_[gidx]      = m_vars[idx].S[gidx];
+      Js_[gidx]     = m_vars[idx].Js[gidx];
+      ncrit_[gidx]  = m_vars[idx].ncrit[gidx];
+      growth_[gidx] = m_vars[idx].dadt[gidx];
+
+      for (int bidx = 0; bidx < numBins; ++bidx) {
+        dest__[bidx]     = m_vars[idx].destBins[gidx][bidx];
+        sizeBins__[bidx] = m_vars[idx].sizeBins[gidx][bidx];
+      }
+      dest_[gidx]     = dest__;
+      sizeBins_[gidx] = sizeBins__;
+      for (int bidx = 0; bidx < 4; ++bidx) {
+        moments__[bidx] = m_states[idx][num_spec + gidx * 4 + bidx];
+      }
+      moments_[gidx] = moments__;
+    }
+    S[idx]      = S_;
+    Js[idx]     = Js_;
+    ncrit[idx]  = ncrit_;
+    growth[idx] = growth_;
+    cbar[idx]   = cbar_;
+  }
+
+  PLOGI << "got thorugh initializing arrays";
+  dataset =
+    new DataSet(group->createDataSet("temp", PredType::NATIVE_DOUBLE, fspace));
+  dataset->write(temp.data(), PredType::NATIVE_DOUBLE, fspace);
+  dataset->close();
+  dataset = new DataSet(
+    group->createDataSet("volume", PredType::NATIVE_DOUBLE, fspace));
+  dataset->write(vol.data(), PredType::NATIVE_DOUBLE, fspace);
+  dataset->close();
+
+  hsize_t fdim2d[] = { m_times.size(), num_nuc };
+  DataSpace fspace2d(2, fdim2d);
+
+  dataset =
+    new DataSet(group->createDataSet("S", PredType::NATIVE_DOUBLE, fspace2d));
+  dataset->write(S.data(), PredType::NATIVE_DOUBLE, fspace2d);
+  dataset->close();
+  dataset =
+    new DataSet(group->createDataSet("Js", PredType::NATIVE_DOUBLE, fspace2d));
+  dataset->write(Js.data(), PredType::NATIVE_DOUBLE, fspace2d);
+  dataset->close();
+  dataset = new DataSet(
+    group->createDataSet("ncrit", PredType::NATIVE_DOUBLE, fspace2d));
+  dataset->write(ncrit.data(), PredType::NATIVE_DOUBLE, fspace2d);
+  dataset->close();
+  dataset = new DataSet(
+    group->createDataSet("growth", PredType::NATIVE_DOUBLE, fspace2d));
+  dataset->write(growth.data(), PredType::NATIVE_DOUBLE, fspace2d);
+  dataset->close();
+  dataset = new DataSet(
+    group->createDataSet("cbar", PredType::NATIVE_DOUBLE, fspace2d));
+  dataset->write(cbar.data(), PredType::NATIVE_DOUBLE, fspace2d);
+  dataset->close();
+
+  PLOGI << "stored 2d data";
+  hsize_t fdim3d[] = { m_times.size(), num_nuc, static_cast<hsize_t>(numBins) };
+  DataSpace fspace3d(3, fdim3d);
+
+  dataset = new DataSet(
+    group->createDataSet("dest_bins", PredType::NATIVE_DOUBLE, fspace3d));
+  dataset->write(dest.data(), PredType::NATIVE_DOUBLE, fspace3d);
+  dataset->close();
+  dataset = new DataSet(
+    group->createDataSet("size_bins", PredType::NATIVE_DOUBLE, fspace3d));
+  dataset->write(sizeBins.data(), PredType::NATIVE_DOUBLE, fspace3d);
+  dataset->close();
+
+  PLOGI << "stored 3d binning data";
+  hsize_t fdim3d2[] = { m_times.size(), num_nuc, 4 };
+  DataSpace fspace3d2(3, fdim3d2);
+
+  dataset = new DataSet(
+    group->createDataSet("moments", PredType::NATIVE_DOUBLE, fspace3d2));
+  dataset->write(moments.data(), PredType::NATIVE_DOUBLE, fspace3d2);
+  dataset->close();
+
+  PLOGI << "stored moments";
+  fspace.close();
+  m_states.clear();
+  m_times.clear();
+  m_vars.clear();
+  m_dt.clear();
+  group->close();
+  file->close();
+  if (count == 10) {
+    exit(1);
+  }
+}
+
+void
+CellObserver::operator()(const std::vector<double>& x,
+                         const cell_state& s,
+                         const double t,
+                         const double dt)
+{
+
+  ++n_called;
+  if (n_called % m_nstore == 0) {
+    m_states.push_back(x);
+    m_times.push_back(t);
+    m_vars.push_back(s);
+    m_dt.push_back(dt);
+  }
+  if (n_called % 100000 == 0)
+    dump_abundances();
+}
+*/

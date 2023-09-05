@@ -1,0 +1,645 @@
+/*© 2023. Triad National Security, LLC. All rights reserved.
+This program was produced under U.S. Government contract 89233218CNA000001 for Los Alamos
+National Laboratory (LANL), which is operated by Triad National Security, LLC for the U.S.
+Department of Energy/National Nuclear Security Administration. All rights in the program are.
+reserved by Triad National Security, LLC, and the U.S. Department of Energy/National Nuclear
+Security Administration. The Government is granted for itself and others acting on its behalf a
+nonexclusive, paid-up, irrevocable worldwide license in this material to reproduce, prepare.
+derivative works, distribute copies to the public, perform publicly and display publicly, and to permit.
+others to do so.*/
+
+#include "cell.h"
+
+#include "utilities.h"
+#include "constants.h"
+#include "configuration.h"
+#include "network.h"
+#include "cellobserver.h"
+#include "elements.h"
+#include "sputter.h"
+
+#include <iomanip>
+#include <limits>
+#include <boost/math/quadrature/gauss.hpp>
+#include <boost/math/quadrature/gauss_kronrod.hpp>
+#include <boost/numeric/odeint.hpp>
+#include <boost/format.hpp>
+#include <plog/Log.h>
+#include <algorithm>
+#include <boost/format.hpp>
+#include <boost/math/interpolators/makima.hpp>
+#include <boost/range/algorithm.hpp>
+#include <boost/range/numeric.hpp>
+#include <boost/range/adaptors.hpp>
+#include <boost/range/algorithm_ext.hpp>
+#include <chrono>
+#include <cmath>
+#include <fstream>
+#include <numeric>
+#include <plog/Log.h>
+#include <string>
+#include <valarray>
+#include <vector>
+#include <sstream>
+
+using boost::math::interpolators::makima;
+using namespace boost::numeric::odeint;
+using namespace std::chrono;
+
+cell::cell ( network* n, params* sputARR, configuration* con, uint32_t id, const spec_v &init_s,
+             const cell_input &input_data )
+    : net (n), sputARR (sputARR), config (con), cid (id), elm("data/elements.json")
+{
+  numReact = net->n_nucleation_reactions;
+  numBins = config->bin_number;
+  numGas = init_s.size();
+  numSpec = net->n_species;
+  set_init_data(init_s, input_data);
+  set_env_data(input_data);
+  st_v.parts.resize(numReact);
+  reaction_switch.resize(numReact);
+  std::fill(reaction_switch.begin(), reaction_switch.end(), true);
+}
+
+void
+cell::set_init_data(const spec_v& init_s, const cell_input& init_data)
+{
+  using constants::N_MOMENTS;
+  st_v.init_abund.resize(numSpec);
+  std::fill(st_v.init_abund.begin(), st_v.init_abund.end(), 0.0E0);
+
+  for (size_t i = 0; i < numGas; ++i) {
+    auto idx = net->get_species_index(init_s[i]);
+    if (idx != -1) {
+      st_v.init_abund[idx] = init_data.inp_abund[i];
+    }
+  }
+
+  // added moments to solution vector
+  st_v.abund.resize(numSpec + numReact * N_MOMENTS);
+  //st_v.g_change.resize(numSpec, 0.0);
+  for (size_t idx = 0; idx < numSpec; idx++) {
+    st_v.abund[idx] = st_v.init_abund[idx];
+  }
+
+  // vectors for tracking multiple grain values. makes printout easier
+  st_v.cbars.resize(net->n_nucleation_reactions);
+  st_v.S.resize(net->n_nucleation_reactions);
+  st_v.Js.resize(net->n_nucleation_reactions);
+  st_v.dadt.resize(net->n_nucleation_reactions);
+  st_v.ncrit.resize(net->n_nucleation_reactions);
+
+  st_v.start_time = init_data.inp_time_start;
+
+
+  // vectors for binning and destruction/growth
+  st_v.grn_sizes.assign(init_data.inp_binSizes.begin(),init_data.inp_binSizes.end());
+  st_v.edges.assign(init_data.inp_binEdges.begin(),init_data.inp_binEdges.end());
+  st_v.sizeBins.assign(init_data.inp_size_dist.begin(),init_data.inp_size_dist.end());
+  st_v.vd.assign(init_data.inp_vd.begin(),init_data.inp_vd.end());
+  st_v.runningTot_size_change.assign(init_data.inp_tot_size_change.begin(),init_data.inp_tot_size_change.end());
+
+  st_v.erosion_dadt.resize(numReact*numBins);
+}
+
+void
+cell::set_env_data(const cell_input& input_data)
+{
+  // PLOGI << "Setting environment data (temperatures, volumes)";
+  env_times.assign(input_data.inp_times.begin(), input_data.inp_times.end());
+  env_temp.assign(input_data.inp_temp.begin(),
+                          input_data.inp_temp.end());
+  env_volumes.assign(input_data.inp_volumes.begin(),
+                     input_data.inp_volumes.end());
+  env_rho.assign(input_data.inp_rho.begin(), input_data.inp_rho.end());
+  env_pressure.assign(input_data.inp_pressure.begin(),
+                      input_data.inp_pressure.end());
+  env_shock.assign(input_data.inp_shock.begin(), input_data.inp_shock.end());
+  env_shock_velo.assign(input_data.inp_shock_velo.begin(), input_data.inp_shock_velo.end());
+
+  // PLOGI << "Creating splines for interpolation of environment variables";
+  st_v.volume_0             = env_volumes[0];
+
+  std::vector<double> times = env_times;
+  env_temp_interp = makima(std::move(times), std::move(env_temp));
+  std::vector<double> times1 = env_times;
+  env_volume_interp = makima(std::move(times1), std::move(env_volumes));
+  std::vector<double> times2 = env_times; 
+  env_rho_interp     = makima(std::move(times2), std::move(env_rho));
+  std::vector<double> times5 = env_times;
+  env_pressure_interp = makima(std::move(times5), std::move(env_pressure));
+  std::vector<double> times6 = env_times;
+  env_shock_interp    = makima(std::move(times6), std::move(env_shock));
+  std::vector<double> times7 = env_times;
+  env_shock_velo_interp = makima(std::move(times7), std::move(env_shock_velo));
+}
+
+bool
+cell::check_solution(const std::vector<double>& x)
+{
+  for (const auto& val: x) {
+    if (val < 0.0 || std::isnan(val))
+      return false;
+  }
+  return true;
+}
+
+void
+cell::solve()
+{
+  using constants::k_B;
+  using constants::kB_eV;
+  using numbers::one;
+  auto abs_err = config->ode_abs_err, rel_err = config->ode_rel_err;
+  double max_dt = config->ode_dt_max;// min_dt = config->ode_dt_min;
+  auto time_start = st_v.start_time, time_end = env_times.back();
+  auto dt0             = config->ode_dt_0;
+  auto rkd             = runge_kutta_dopri5<std::vector<double>>{};
+  auto stepper         = make_dense_output(abs_err, rel_err, max_dt, rkd);
+  size_t n_solve_steps   = 0;
+  size_t n_stepper_reset = 0;
+  kT = k_B * st_v.temperature; // ergs
+  kTeV = kB_eV * st_v.temperature;
+  invkT = 1.0 / kT;
+
+  stepper.initialize(st_v.abund, time_start, dt0);
+  calc_state_vars(st_v.abund, time_start);
+
+  //solution_states.push_back(st_v);
+  CellObserver observer(cid,net,config);
+  while ((stepper.current_time() < time_end)) {
+    auto t0               = stepper.current_time();
+    auto dt               = stepper.current_time_step();
+    auto x0               = stepper.current_state();
+    st_v.time             = t0;
+    st_v.dt               = dt;
+    integration_abandoned = false;
+    if (t0 + dt > time_end) {
+      PLOGI << "finished integration, t_current: " << t0;
+      break;
+    }
+    stepper.do_step(std::ref(*(this)));
+    check_reactions(stepper.current_state());
+    if (integration_abandoned) {
+      stepper.initialize(x0, t0, dt * 0.5);
+      ++n_stepper_reset;
+    } 
+    else 
+    {
+      observer(st_v);
+      n_stepper_reset = 0;
+    }
+    if (n_solve_steps > CELL_MAX_STEPS) {
+      PLOGI << "too many solve steps, exiting at t: " << stepper.current_time();
+      break;
+    }
+    if (n_stepper_reset > CELL_MAXIMUM_STEPPER_RESETS) {
+      PLOGI << "TOO MANY RESTARTS, exiting at t = " << stepper.current_time();
+      break;
+    }
+    ++n_solve_steps;
+    if (t0 + dt > time_end) {
+      PLOGI << "finished integration, t_current: " << t0;
+      break;
+    }
+  }
+  observer.finalSave(st_v);
+}
+
+void
+cell::check_reactions(const std::vector<double>& x)
+{
+  for (size_t i = 0; i < numReact; ++i) {
+    reaction_switch[i] = true;
+    for (const auto& r_idx: net->reactants_idx[i]) {
+      if (x[r_idx] < CELL_MINIMUM_ABUNDANCE) {
+        reaction_switch[i] = false;
+        break;
+      }
+    }
+  }
+}
+
+void
+cell::calc_state_vars(const std::vector<double>& x, const double time)
+{
+  using constants::kBeta;
+  using constants::equPres;
+  using constants::pi;
+  using constants::istdP;
+  using constants::k_B;
+  using constants::stdP;
+  using constants::amu2g;
+  using constants::kB_eV;
+
+  std::fill(std ::begin(st_v.erosion_dadt), std ::end(st_v.erosion_dadt), 0.0);
+
+  st_v.temperature = env_temp_interp(time);
+  st_v.volume   = env_volume_interp(time);
+  st_v.rho      = env_rho_interp(time);
+  st_v.drho     = env_rho_interp.prime(time);
+  st_v.pressure = env_pressure_interp(time);
+  st_v.dP       = env_pressure_interp.prime(time);
+  kT = k_B * st_v.temperature; // ergs
+  kTeV = kB_eV * st_v.temperature;
+  invkT = 1.0 / kT;
+
+  for (size_t i = 0; i < numReact; ++i) {
+    auto reaction_idx = net->nucleation_reactions_idx[i];
+    auto num_ks       = net->ks_lists_idx[i].size();
+    auto key_spec_idx = net->ks_lists_idx[i][0];
+    if (num_ks > 1) {
+      for (size_t kidx = 0; kidx < num_ks; ++kidx) {
+        auto r_idx = net->ks_lists_idx[i][kidx];
+        if (x[key_spec_idx] > x[r_idx])
+          key_spec_idx = r_idx;
+      }
+    }
+    st_v.parts[i].ks_idx = key_spec_idx;
+    if (x[key_spec_idx] < CELL_MINIMUM_ABUNDANCE) {
+      st_v.parts[i].is_nucleating = 0;
+      st_v.S[i]                   = 0.0;
+      st_v.Js[i]                  = 0.0;
+      st_v.dadt[i]                = 0.0;
+      st_v.ncrit[i]               = 0.0;
+      continue;
+    }
+
+    // std::string elem_sym = net->species[st_v.parts[i].ks_idx];
+    // auto at_mass = elm.elements.at(elem_sym).mass;
+    // st_v.parts[i].ks_react_mass = at_mass * amu2g;
+    st_v.parts[i].ks_react_mass =
+      elm.elements.at(net->species[st_v.parts[i].ks_idx]).mass * amu2g;
+
+    std::vector<double> react_nu;
+    std::vector<int> react_idx;
+    auto stoich_ks = 0.0;
+    for (const auto& kv: net->nucleation_species_count[i]) {
+      if (kv.first == key_spec_idx) {
+        stoich_ks = kv.second;
+      }
+      react_idx.emplace_back(kv.first);
+    }
+    for (const auto& kv: net->nucleation_species_count[i])
+      react_nu.emplace_back(kv.second / stoich_ks);
+    st_v.parts[i].react_idx = react_idx;
+    st_v.parts[i].react_nu  = react_nu;
+
+    double psum = 0.0;
+    for (size_t ridx = 0; ridx < react_idx.size(); ridx++) {
+      if (x[react_idx[ridx]] != 0) {
+        if (react_idx[ridx] != st_v.parts[i].ks_idx)
+          psum = psum + log(x[react_idx[ridx]] * kT * istdP) * react_nu[ridx];
+      }
+    }
+
+    double c1 = x[key_spec_idx];
+    st_v.cbars[i] = st_v.init_abund[key_spec_idx] * st_v.volume_0 / st_v.volume;
+
+    auto delg_reduced = (net->reactions[reaction_idx].alpha / st_v.temperature -
+                         net->reactions[reaction_idx].beta) + psum;
+    st_v.parts[i].lnS  = log(c1 * kT * istdP) + delg_reduced;
+    st_v.parts[i].catS = (stdP / kT) * exp(-delg_reduced);
+
+    double w = 1.0;
+    for (size_t ridx = 0; ridx < react_idx.size(); ++ridx) 
+    {
+      if (react_idx[ridx] != st_v.parts[i].ks_idx)
+        w = w + react_nu[ridx];
+    }
+    double Pii = 1.0;
+    for (size_t ridx = 0; ridx < react_idx.size(); ++ridx) 
+    {
+      if (react_idx[ridx] != st_v.parts[i].ks_idx)
+        Pii = Pii * pow(x[react_idx[ridx]] / c1, react_nu[ridx]);
+    }
+    if (st_v.parts[i].lnS > 0.0) {
+      double iw = 1. / w;
+      Pii       = pow(Pii, iw);
+      double mu = 4.0 * pi * pow(net->reactions[reaction_idx].a_rad, 2.) *
+                  net->reactions[reaction_idx].sigma / kT;
+      double expJ = -4.0 / 27.0 * pow(mu, 3.) / pow(st_v.parts[i].lnS, 2.);
+      double Jkin = pow(2.0 * net->reactions[reaction_idx].sigma /
+                          (pi * st_v.parts[i].ks_react_mass),0.5);
+      st_v.S[i]    = exp(st_v.parts[i].lnS);
+      st_v.Js[i]   = net->reactions[reaction_idx].omega0 * Jkin * c1 * c1 * Pii * exp(expJ);
+      st_v.dadt[i] = net->reactions[reaction_idx].omega0 *
+                     pow(0.5 * kT / (pi * st_v.parts[i].ks_react_mass), 0.5) *
+                     c1 * (1. - 1. / st_v.S[i]);
+      st_v.ncrit[i] = pow(2.0 / 3.0 * (mu / st_v.parts[i].lnS), 3.0) + iw;
+
+      destroy(i);
+      rebin(i);
+
+      auto momIDX = numSpec + constants::N_MOMENTS * i;
+      // it there is a new grain, fing the corresponding bin and get the size of
+      // the bin
+      if ((x[momIDX + 3] > 0.0) && (x[momIDX + 0] > 0.0)) {
+        double new_grn_size =
+          (net->reactions[reaction_idx].a_rad) *
+          pow(x[momIDX + 3] / x[momIDX + 0], 1. / 3.);
+        auto addToBin = 0;
+        double dr    = 0;
+        for (size_t bidx = 0; bidx < st_v.grn_sizes.size(); ++bidx) {
+          if ((new_grn_size < st_v.edges[bidx + 1]) &&
+              (new_grn_size > st_v.edges[bidx])) {
+            addToBin = bidx;
+            dr       = st_v.edges[bidx + 1] - st_v.edges[bidx];
+          }
+        }
+        st_v.sizeBins[i*numBins+addToBin] += st_v.Js[i] * st_v.dt / dr;
+      }
+    } 
+    else 
+    { // we want to force these to zero in case a value is unchanged for
+      // the next timestep
+      st_v.S[i]     = 0.0;
+      st_v.Js[i]    = 0.0;
+      st_v.dadt[i]  = 0.0;
+      st_v.ncrit[i] = 0.0;
+    }
+    if (st_v.ncrit[i] > 0.0) 
+    {
+      st_v.parts[i].grains_nucleating = st_v.Js[i] * st_v.ncrit[i];
+      st_v.parts[i].is_nucleating     = 1;
+    } 
+    else 
+    {
+      st_v.parts[i].grains_nucleating = 0.0;
+      st_v.parts[i].is_nucleating     = 0;
+    }
+
+    if (env_shock_interp(time) > 0.5) {
+      std::fill(st_v.vd.begin(),st_v.vd.end(),env_shock_velo_interp(time));
+    }
+  }
+}
+
+void cell::rebin(const int gidx)
+{
+  using constants::kBeta;
+  using constants::equPres;
+  using constants::pi;
+  using constants::istdP;
+  using constants::k_B;
+  using constants::stdP;
+  using constants::amu2g;
+  using constants::kB_eV;
+
+  // amount of growth per grain species
+  double growth = st_v.dadt[gidx] * st_v.dt;
+
+  // we calculate the change in grain size before rebinning
+  for (size_t bidx = numBins-1; bidx >= 0; --bidx)
+  {
+    auto idx = (gidx*numBins)+bidx;
+    if(st_v.sizeBins[idx]!=0.0) continue;
+    st_v.runningTot_size_change[idx] += growth - st_v.erosion_dadt[gidx*numBins+bidx]*st_v.dt;
+  }
+
+  // now we find which grains move up, which move down, and which stay the same
+  std::vector<double> binsMoveUp(numBins,0.0);
+  std::vector<double> binsMoveDown(numBins,0.0);
+  std::vector<double> binsStay(numBins,0.0);
+  for (size_t bidx = 0; bidx < numBins; ++bidx)
+  {
+    auto idx = (gidx*numBins)+bidx;
+    if (st_v.sizeBins[idx]!=0.0) continue;
+
+    // move up a bin
+    if(st_v.grn_sizes[bidx]+st_v.runningTot_size_change[idx] > st_v.edges[bidx+1])
+    {
+      if(bidx==numBins-1) continue;
+      else
+      {
+        double binWidth = st_v.edges[bidx+1]-st_v.edges[bidx];
+        double higherBinWidth = st_v.edges[bidx+2]-st_v.edges[bidx+1];
+        binsMoveUp[bidx+1] = st_v.sizeBins[idx]*(binWidth/higherBinWidth);
+        st_v.runningTot_size_change[idx] = 0.0;
+      }
+    }
+    else
+    {
+      //moving down a bin
+      if(st_v.grn_sizes[bidx]+st_v.runningTot_size_change[idx] < st_v.edges[bidx+1])
+      {
+        if(bidx==0)continue;
+        else
+        {
+          double binWidth = st_v.edges[bidx+1]-st_v.edges[bidx];
+          double lowerBinWidth = st_v.edges[bidx]-st_v.edges[bidx-1];
+          binsMoveDown[bidx-1] = st_v.sizeBins[idx]*(binWidth/lowerBinWidth);
+          st_v.runningTot_size_change[idx] = 0.0;
+        }
+      }
+      // staying in the same bin
+      else
+      {
+        binsStay[bidx] = st_v.sizeBins[idx];
+      }
+    }
+  }
+
+  // now update the size bins
+  for (size_t bidx = 0; bidx < numBins; ++bidx)
+  {
+    auto idx = (gidx*numBins)+bidx;
+    st_v.sizeBins[idx] = binsMoveUp[bidx]+binsMoveDown[bidx]+binsStay[bidx];
+  }
+}
+
+double cell::Y(const double& E, const int grnid, const int gsID)
+{
+    using constants::pi;
+    using constants::echarge_sq;
+    using numbers::onehalf;
+    using numbers::twothird;
+    using utilities::square;
+    using numbers::sp_3_441;
+    using numbers::sp_2_718;
+    using numbers::one;
+    using numbers::sp_6_35;
+    using numbers::sp_6_882;   
+    using numbers::sp_1_708;
+    using constants::y_pref;
+
+    if(E<sputARR->Eth[grnid][gsID]){return 0.0;}
+
+    // biscaro 2016 eq 7
+    auto eps = sputARR->eiCoeff[grnid][gsID] * E;
+
+    // sqrt(eps)
+    auto sqrt_eps = std::sqrt(eps);
+
+    // si(epsi) eq 6
+    auto sieps = sp_3_441 * sqrt_eps * std::log(eps + sp_2_718)
+                / (one + sp_6_35 * sqrt_eps + eps * (sp_6_882 * sqrt_eps - sp_1_708));
+    // Eth/E
+    auto eth_ratio = sputARR->Eth[grnid][gsID]/E;
+
+    auto Si = sputARR->SiCoeff[grnid][gsID] * sieps;
+
+    auto suffix = (one - std::pow(eth_ratio,twothird)) * square(one - eth_ratio);
+
+    auto preret = Si * sputARR->alpha[grnid][gsID] * suffix / 
+                (sputARR->u0[grnid] * (sputARR->K[grnid] * sputARR->mu[grnid][gsID] + one));
+
+    //TODO: make sure all units are being correctly converted
+    //eV_lost += 4.2E-2 * preret * sputARR->Eth[grnid][gsID];
+    return y_pref * preret;
+}
+
+double cell::Therm(const int gidx, const int gsID)
+{
+
+    double pref = sputARR->msp_2rhod[gidx]  * 
+                    sqrt(sputARR->y8_piMi[gsID]*kT);
+    auto f = [&](const double& x) { return x * exp(-x)*Y(x*kTeV,gidx,gsID); };
+    double lowLim = sputARR->Eth[gidx][gsID]/kTeV;
+    double Q = boost::math::quadrature::gauss_kronrod<double, 7>::integrate(f, 
+                lowLim, std::numeric_limits<double>::infinity());
+    return pref * Q * st_v.abund[gsID]; 
+}
+
+double cell::NonTherm(const double& sidx, const int gidx, const int gsID)
+{
+    using constants::JtoEV;
+    using constants::kB_eV;
+    using constants::cm2m;
+    using constants::amu2g;
+    using numbers::onehalf;
+    using utilities::square;
+    auto iid = gidx*numBins+sidx;
+    double x = onehalf * sputARR->miKG[gsID] * 
+                square(st_v.vd[iid]*cm2m)*JtoEV; 
+    double pref = sputARR->msp_2rhod[gidx] * st_v.vd[iid] * st_v.abund[gsID];
+    return  pref * Y(x,gidx,gsID); 
+}
+
+//TODO: properly namespace `std::` (e.g. `std::pow`)
+void cell::destroy(const int gidx)
+{
+    using constants::pi;
+    using constants::k_B;
+    using constants::amu2g;
+    using constants::JtoEV;
+    using constants::kB_eV;
+    using constants::kBeta;
+    using numbers::onehalf;
+    using utilities::square;
+    using numbers::ten;
+    for( size_t sidx =0; sidx < numBins; ++sidx)
+    {
+        double dadt = 0.0;
+        auto idx = (gidx*numBins)+sidx;
+        // remember grain sizes are in cm
+        if(st_v.sizeBins[idx] != 0.0)
+        {
+            for(size_t gsID=0; gsID < numGas; ++gsID)
+            {
+                if(st_v.abund[gsID] == 0.0) continue;
+                // s_i2 is unitless, invkT is in cgs, vd is in cm/s
+                double s_i2 = sputARR->miGRAMS[gsID] * onehalf * invkT * square(st_v.vd[idx]);
+                if( s_i2 > ten) 
+                {
+                    dadt +=  NonTherm(sidx,gidx,gsID);
+                }
+                else 
+                {
+                    dadt += Therm(gidx,gsID);
+                }
+            }
+        }
+        st_v.erosion_dadt[idx]+=dadt; 
+        double temp_velo = calc_dvdt(st_v.grn_sizes[sidx],st_v.vd[idx],gidx) * st_v.dt; // in cm/s
+        if(st_v.vd[idx] - std::abs(temp_velo) >= 0.0)
+        {
+            st_v.vd[idx] = st_v.vd[idx] - std::abs(temp_velo);
+        }
+        else{
+            st_v.vd[idx] = 0.0;
+        }
+    }
+}
+
+double cell::calc_dvdt(const double& cross_sec, const double& vd, const int grnid) // cross sec is in cm
+{
+    using constants::pi;
+    using constants::k_B;
+    using constants::amu2g;
+    using numbers::eight_threeRootPi;
+    using numbers::ninePi_sixyfour;
+    using utilities::square;
+    using numbers::one;
+
+    double G_tot = 0;
+
+    //TODO: dont use a reference variable for integer types
+    for(size_t gsID=0; gsID < numGas; ++gsID)
+    {
+        // units of # of particles * mass in grams. might just need the mass not the * # of particles
+        double m = sputARR->miGRAMS[gsID]; // should be in grams now
+        double s2 = m * square(vd) / (2.*kT); // assumes cgs units
+        G_tot += st_v.abund[gsID] * std::sqrt(s2) * eight_threeRootPi * 
+                std::sqrt(1.+s2*ninePi_sixyfour);
+    }
+    auto yield = sputARR->three_2Rhod[grnid] * kT/(cross_sec)*G_tot;
+    return  -std::abs(yield); // should be in cm/s, cross sec is in cm
+}
+
+
+void
+cell::operator()(const std::vector<double>& x, std::vector<double>& dxdt, const double t)
+{
+  using constants::N_MOMENTS;
+  double fi;
+
+  std::fill(std ::begin(dxdt), std ::end(dxdt), 0.0);
+  if (!check_solution(x)) {
+    integration_abandoned = true;
+    return;
+  }
+  calc_state_vars(x, t);
+  for (size_t i = 0; i < numReact; ++i) {
+    if ((st_v.parts[i].is_nucleating) && (st_v.ncrit[i] > 2.0)) {
+      auto gidx   = numSpec + N_MOMENTS * i;
+      dxdt[gidx] = st_v.Js[i] / st_v.cbars[i];
+      for (int j = 1; j < N_MOMENTS; ++j) {
+        dxdt[gidx + j] =
+          dxdt[gidx] * pow(st_v.ncrit[i], (j / 3.0)) +
+          (j / net->reactions[i].a_rad) * st_v.dadt[i] * x[gidx + j - 1];
+      }
+      for (size_t idx = 0; idx < st_v.parts[i].react_idx.size(); ++idx) {
+        auto r_idx = st_v.parts[i].react_idx[idx];
+        auto r_nu  = st_v.parts[i].react_nu[idx];
+        dxdt[r_idx] -= st_v.cbars[i] * dxdt[gidx + 3] * r_nu;
+      }
+    }
+  }
+
+  for (size_t i = 0; i < numSpec; ++i)
+    dxdt[i] += st_v.drho / st_v.rho * x[i];
+  for (size_t i = 0; i < numReact; ++i) {
+    auto reaction_idx = net->nucleation_reactions_idx[i];
+    if (!reaction_switch[reaction_idx])
+      continue;
+    for (const auto& r: net->reactants_idx[reaction_idx])
+      dxdt[r] -= st_v.parts[i].grains_nucleating;
+    for (const auto& p: net->products_idx[reaction_idx])
+      dxdt[p] += st_v.parts[i].grains_nucleating;
+  }
+
+  for (size_t i = 0; i < net->n_chemical_reactions; ++i) {
+    auto reaction_idx = net->chemical_reactions_idx[i];
+    if (!reaction_switch[reaction_idx])
+      continue;
+    fi = 1.0;
+    for (const auto& r: net->reactants_idx[reaction_idx])
+      fi *= x[r];
+    fi *= net->reactions[reaction_idx].rate(st_v.temperature);
+    for (const auto& r: net->reactants_idx[reaction_idx])
+      dxdt[r] -= fi;
+    for (const auto& p: net->products_idx[reaction_idx])
+      dxdt[p] += fi;
+  }
+}
