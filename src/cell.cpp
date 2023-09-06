@@ -97,13 +97,20 @@ cell::set_init_data(const spec_v& init_s, const cell_input& init_data)
   cell_st.edges.assign(init_data.inp_binEdges.begin(),init_data.inp_binEdges.end());
   cell_st.vd.assign(init_data.inp_vd.begin(),init_data.inp_vd.end());
   cell_st.rebin_chng.resize(cell_st.numBins * cell_st.numReact);
-  cell_st.runningTot_size_change.assign(init_data.inp_destBins.begin(),init_data.inp_destBins.end());
+  cell_st.runningTot_size_change.resize(cell_st.numBins * cell_st.numReact);
+  std::fill(cell_st.runningTot_size_change.begin(),cell_st.runningTot_size_change.end(),0.0);
 }
 
 // load data and setup interpolators
 void
 cell::set_env_data(const cell_input& input_data)
 {
+  if(config->environment_file.empty())
+  {
+    cell_st.temperature = input_data.inp_shock_temp;
+    PLOGD << "No environment file loaded.";
+    return;
+  }
   env_times.assign(input_data.inp_times.begin(), input_data.inp_times.end());
   env_temp.assign(input_data.inp_temp.begin(),
                           input_data.inp_temp.end());
@@ -143,7 +150,18 @@ cell::solve()
   using numbers::one;
   auto abs_err = config->ode_abs_err, rel_err = config->ode_rel_err;
   double max_dt = config->ode_dt_max;// min_dt = config->ode_dt_min;
-  auto time_start = env_times[0], time_end = env_times.back();
+  double time_start, time_end;
+  if(!config->environment_file.empty())
+  {
+    time_start = env_times[0];
+    time_end = env_times.back();
+    PLOGD << "Times taken from from environment file.";
+  }
+  else
+  {
+    time_start = cell_st.start_time;
+    time_end = cell_st.start_time + 3.14e7;
+  }
   auto dt0             = config->ode_dt_0;
   auto rkd             = runge_kutta_dopri5<std::vector<double>>{};
   auto stepper         = make_dense_output(abs_err, rel_err, max_dt, rkd);
@@ -223,12 +241,16 @@ cell::calc_state_vars(const std::vector<double>& x, const double time)
   using constants::k_B;
   using constants::kB_eV;
 
-  cell_st.temperature = env_temp_interp(time);
-  cell_st.volume   = env_volume_interp(time);
-  cell_st.rho      = env_rho_interp(time);
-  cell_st.drho     = env_rho_interp.prime(time);
-  cell_st.pressure = env_pressure_interp(time);
-  cell_st.dP       = env_pressure_interp.prime(time);
+  if(!config->environment_file.empty())
+  {
+    cell_st.temperature = env_temp_interp(time);
+    cell_st.volume   = env_volume_interp(time);
+    cell_st.rho      = env_rho_interp(time);
+    cell_st.drho     = env_rho_interp.prime(time);
+    cell_st.pressure = env_pressure_interp(time);
+    cell_st.dP       = env_pressure_interp.prime(time);
+  }
+  
   cell_st.kT = k_B * cell_st.temperature; // ergs
   cell_st.kTeV = kB_eV * cell_st.temperature;
   cell_st.invkT = 1.0 / cell_st.kT;
@@ -243,6 +265,7 @@ void cell::nucleate(const std::vector<double>& x)
   using constants::istdP;
   using constants::stdP;
   using constants::N_MOMENTS;
+
   int sd_start = cell_st.numGas + cell_st.numReact * N_MOMENTS;
   for (size_t gidx = 0; gidx < cell_st.numReact; ++gidx) 
   {
@@ -271,10 +294,8 @@ void cell::nucleate(const std::vector<double>& x)
       cell_st.ncrit[gidx]               = 0.0;
       continue;
     }
-
     cell_st.parts[gidx].ks_react_mass =
       elm.elements.at(net->species[cell_st.parts[gidx].ks_idx]).mass * amu2g;
-
     std::vector<double> react_nu;
     std::vector<int> react_idx;
     auto stoich_ks = 0.0;
@@ -292,7 +313,6 @@ void cell::nucleate(const std::vector<double>& x)
     }
     cell_st.parts[gidx].react_idx = react_idx;
     cell_st.parts[gidx].react_nu  = react_nu;
-
     // nozawa et al. 2003 equ. 4, 2nd term r.h.s.
     // term for saturation
     double psum = 0.0;
@@ -306,7 +326,6 @@ void cell::nucleate(const std::vector<double>& x)
         }
       }
     }
-
     // updating concentrations
     double c1 = x[key_spec_idx];
     cell_st.cbars[gidx] = cell_st.init_abund[key_spec_idx] * cell_st.volume_0 / cell_st.volume;
@@ -316,7 +335,6 @@ void cell::nucleate(const std::vector<double>& x)
     // saturation
     // nozawa et al. 2003 equ 4
     cell_st.parts[gidx].lnS  = log(c1 * cell_st.kT * istdP) + delg_reduced;
-
     // weights from reaction
     double w = 1.0;
     for (size_t ridx = 0; ridx < react_idx.size(); ++ridx) 
@@ -358,7 +376,6 @@ void cell::nucleate(const std::vector<double>& x)
                       c1 * (1. - 1. / cell_st.S[gidx]);
       // critical radius nozawa et al. 2003
       cell_st.ncrit[gidx] = std::pow(2.0 / 3.0 * (mu / cell_st.parts[gidx].lnS), 3.0) + iw;
-
       // finding growth from the dadt
       double growth = cell_st.dadt[gidx] * cell_st.dt;
       for (int bidx = 0; bidx < cell_st.numBins; ++bidx)
@@ -643,15 +660,20 @@ cell::operator()(const std::vector<double>& x, std::vector<double>& dxdt, const 
 {
   using constants::N_MOMENTS;
   double fi;
-
   std::fill(std ::begin(dxdt), std ::end(dxdt), 0.0);
   if (!check_solution(x)) {
     integration_abandoned = true;
     return;
   }
   calc_state_vars(x, t);
-  nucleate(x);
-  destroy();
+  if(config->do_nucleation==1)
+  {
+    nucleate(x);
+  }
+  if(config->do_destruction==1)
+  {
+    destroy();
+  }
   rebin(x, dxdt);
   add_new_grn(x);
   for (size_t i = 0; i < cell_st.numReact; ++i) {
