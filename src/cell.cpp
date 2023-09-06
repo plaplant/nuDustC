@@ -59,7 +59,6 @@ cell::cell ( network* n, params* sputARR, configuration* con, uint32_t id, const
   set_env_data(input_data);
   cell_st.parts.resize(cell_st.numReact);
   reaction_switch.resize(cell_st.numReact);
-  cell_st.len_abund_and_mom = cell_st.numGas + cell_st.numReact * N_MOMENTS;
   std::fill(reaction_switch.begin(), reaction_switch.end(), true);
 }
 
@@ -73,7 +72,6 @@ cell::set_init_data(const spec_v& init_s, const cell_input& init_data)
   // add moments to solution vector
   cell_st.abund_moments_sizebins.resize(cell_st.numGas + cell_st.numReact * N_MOMENTS + cell_st.numBins * cell_st.numReact);
   std::fill(cell_st.abund_moments_sizebins.begin(),cell_st.abund_moments_sizebins.end(),0.0);
-
   for (size_t i = 0; i < cell_st.numGas; ++i) {
     auto idx = net->get_species_index(init_s[i]);
     if (idx != -1) {
@@ -81,11 +79,13 @@ cell::set_init_data(const spec_v& init_s, const cell_input& init_data)
       cell_st.abund_moments_sizebins[idx] = cell_st.init_abund[idx];
     }
   }
+  PLOGI << cell_st.abund_moments_sizebins.size() << " " << init_data.inp_size_dist.size();
   // add size bins to solution vector
+  int sd_start = cell_st.numGas + cell_st.numReact * N_MOMENTS;
   for (size_t idx = 0; idx < cell_st.numBins*cell_st.numReact; idx++) {
-    cell_st.abund_moments_sizebins[idx+cell_st.len_abund_and_mom] = init_data.inp_size_dist[idx];
+    PLOGI << idx << " " << sd_start << " " << init_data.inp_size_dist[idx];
+    cell_st.abund_moments_sizebins[idx+sd_start] = init_data.inp_size_dist[idx];
   }
-  
   // vectors for tracking multiple grain values. makes printout easier
   cell_st.cbars.resize(net->n_nucleation_reactions);
   cell_st.S.resize(net->n_nucleation_reactions);
@@ -94,7 +94,6 @@ cell::set_init_data(const spec_v& init_s, const cell_input& init_data)
   cell_st.ncrit.resize(net->n_nucleation_reactions);
 
   cell_st.start_time = init_data.sim_start_time;
-
   // vectors for binning and destruction/growth
   cell_st.grn_sizes.assign(init_data.inp_binSizes.begin(),init_data.inp_binSizes.end());
   cell_st.edges.assign(init_data.inp_binEdges.begin(),init_data.inp_binEdges.end());
@@ -245,6 +244,8 @@ void cell::nucleate(const std::vector<double>& x)
   using constants::pi;
   using constants::istdP;
   using constants::stdP;
+  using constants::N_MOMENTS;
+  int sd_start = cell_st.numGas + cell_st.numReact * N_MOMENTS;
   for (size_t gidx = 0; gidx < cell_st.numReact; ++gidx) 
   {
     // finding key specie for reaction ad identifying the reactants and their index
@@ -365,7 +366,7 @@ void cell::nucleate(const std::vector<double>& x)
       for (int bidx = 0; bidx < cell_st.numBins; ++bidx)
       {
         auto idx = (gidx*cell_st.numBins)+bidx;
-        if(cell_st.abund_moments_sizebins[idx+cell_st.len_abund_and_mom]==0.0) continue;
+        if(cell_st.abund_moments_sizebins[idx+sd_start]==0.0) continue;
         cell_st.runningTot_size_change[idx] += growth;
       }
     } 
@@ -393,6 +394,8 @@ void cell::nucleate(const std::vector<double>& x)
 // checking if a grain nucleates, dfinds size and adds it to the solution vector
 void cell::add_new_grn(const std::vector<double>& x)
 {
+  using constants::N_MOMENTS;
+  int sd_start = cell_st.numGas + cell_st.numReact * N_MOMENTS;
   for (int gidx = 0; gidx < cell_st.numReact; ++gidx) 
   {
     if (cell_st.parts[gidx].lnS > 0.0) 
@@ -415,7 +418,7 @@ void cell::add_new_grn(const std::vector<double>& x)
             dr       = cell_st.edges[bidx + 1] - cell_st.edges[bidx];
           }
         }
-        cell_st.abund_moments_sizebins[cell_st.len_abund_and_mom + gidx*cell_st.numBins+addToBin] += cell_st.Js[gidx] * cell_st.dt / dr;
+        cell_st.abund_moments_sizebins[sd_start + gidx*cell_st.numBins+addToBin] += cell_st.Js[gidx] * cell_st.dt / dr;
       }
     }
   }
@@ -505,6 +508,8 @@ void cell::destroy()
   using numbers::onehalf;
   using utilities::square;
   using numbers::ten;
+  using constants::N_MOMENTS;
+  int sd_start = cell_st.numGas + cell_st.numReact * N_MOMENTS;
 
   for ( auto gidx = 0; gidx < cell_st.numReact; ++gidx )
   {
@@ -513,7 +518,7 @@ void cell::destroy()
         double dadt = 0.0;
         int idx = (gidx*cell_st.numBins)+sidx;
         // remember grain sizes are in cm
-        if(cell_st.abund_moments_sizebins[cell_st.len_abund_and_mom + idx] != 0.0)
+        if(cell_st.abund_moments_sizebins[sd_start + idx] != 0.0)
         {
             for(auto gsID=0; gsID < cell_st.numGas; ++gsID)
             {
@@ -522,7 +527,7 @@ void cell::destroy()
                 double s_i2 = sputARR->miGRAMS[gsID] * onehalf * cell_st.invkT * square(cell_st.vd[idx]);
                 if( s_i2 > ten) 
                 {
-                    dadt +=  NonTherm(sidx+cell_st.len_abund_and_mom,gidx,gsID);
+                    dadt +=  NonTherm(sidx+sd_start,gidx,gsID);
                 }
                 else 
                 {
@@ -554,6 +559,8 @@ double cell::calc_dvdt(const double& cross_sec, const double& vd, const int grni
     using numbers::ninePi_sixyfour;
     using utilities::square;
     using numbers::one;
+    using constants::N_MOMENTS;
+    int sd_start = cell_st.numGas + cell_st.numReact * N_MOMENTS;
 
     // nozawa et al 2006 equ 19
     double G_tot = 0;
@@ -562,7 +569,7 @@ double cell::calc_dvdt(const double& cross_sec, const double& vd, const int grni
         // units of # of particles * mass in grams. might just need the mass not the * # of particles
         double m = sputARR->miGRAMS[gsID]; // should be in grams now
         double s2 = m * square(vd) / (2.*cell_st.kT); // assumes cgs units
-        G_tot += cell_st.abund_moments_sizebins[cell_st.len_abund_and_mom+gsID] * std::sqrt(s2) * eight_threeRootPi * 
+        G_tot += cell_st.abund_moments_sizebins[sd_start+gsID] * std::sqrt(s2) * eight_threeRootPi * 
                 std::sqrt(1.+s2*ninePi_sixyfour);
     }
     auto yield = sputARR->three_2Rhod[grnid] * cell_st.kT/(cross_sec)*G_tot;
@@ -581,6 +588,8 @@ void cell::rebin(const std::vector<double>& x, std::vector<double>& dxdt)
   using constants::stdP;
   using constants::amu2g;
   using constants::kB_eV;
+  using constants::N_MOMENTS;
+  int sd_start = cell_st.numGas + cell_st.numReact * N_MOMENTS;
 
   std::fill(cell_st.rebin_chng.begin(),cell_st.rebin_chng.end(),0.0);
   // now we find which grains move up, which move down, and which stay the same
@@ -591,7 +600,7 @@ void cell::rebin(const std::vector<double>& x, std::vector<double>& dxdt)
     for (size_t bidx = 0; bidx < cell_st.numBins; ++bidx)
     {
       auto idx = (gidx*cell_st.numBins)+bidx;
-      if (cell_st.abund_moments_sizebins[cell_st.len_abund_and_mom + idx]==0.0) continue;
+      if (cell_st.abund_moments_sizebins[sd_start + idx]==0.0) continue;
       // move up a bin
       if(cell_st.grn_sizes[bidx]+cell_st.runningTot_size_change[idx] < cell_st.edges[bidx+1])
       {
@@ -601,7 +610,7 @@ void cell::rebin(const std::vector<double>& x, std::vector<double>& dxdt)
         {
           double binWidth = cell_st.edges[bidx+1]-cell_st.edges[bidx];
           double lowerBinWidth = cell_st.edges[bidx]-cell_st.edges[bidx-1];
-          binsMoveDown[bidx-1] = cell_st.abund_moments_sizebins[cell_st.len_abund_and_mom + idx]*(binWidth/lowerBinWidth);
+          binsMoveDown[bidx-1] = cell_st.abund_moments_sizebins[sd_start + idx]*(binWidth/lowerBinWidth);
           cell_st.runningTot_size_change[idx] = 0.0;
         }
         cell_st.rebin_chng[bidx] -= 1.0;
@@ -614,7 +623,7 @@ void cell::rebin(const std::vector<double>& x, std::vector<double>& dxdt)
         {
           double binWidth = cell_st.edges[bidx+1]-cell_st.edges[bidx];
           double higherBinWidth = cell_st.edges[bidx+2]-cell_st.edges[bidx+1];
-          binsMoveUp[bidx+1] = cell_st.abund_moments_sizebins[cell_st.len_abund_and_mom + idx]*(binWidth/higherBinWidth);
+          binsMoveUp[bidx+1] = cell_st.abund_moments_sizebins[sd_start + idx]*(binWidth/higherBinWidth);
           cell_st.runningTot_size_change[idx] = 0.0;
         }
         cell_st.rebin_chng[bidx] -= 1.0;
@@ -625,7 +634,7 @@ void cell::rebin(const std::vector<double>& x, std::vector<double>& dxdt)
     for (size_t bidx = 0; bidx < cell_st.numBins; ++bidx)
     {
       auto idx = (gidx*cell_st.numBins)+bidx;
-      dxdt[cell_st.len_abund_and_mom + idx] += binsMoveUp[bidx]+binsMoveDown[bidx];
+      dxdt[sd_start + idx] += binsMoveUp[bidx]+binsMoveDown[bidx];
     }
   }
 }
