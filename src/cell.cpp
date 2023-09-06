@@ -79,11 +79,9 @@ cell::set_init_data(const spec_v& init_s, const cell_input& init_data)
       cell_st.abund_moments_sizebins[idx] = cell_st.init_abund[idx];
     }
   }
-  PLOGI << cell_st.abund_moments_sizebins.size() << " " << init_data.inp_size_dist.size();
   // add size bins to solution vector
   int sd_start = cell_st.numGas + cell_st.numReact * N_MOMENTS;
   for (size_t idx = 0; idx < cell_st.numBins*cell_st.numReact; idx++) {
-    PLOGI << idx << " " << sd_start << " " << init_data.inp_size_dist[idx];
     cell_st.abund_moments_sizebins[idx+sd_start] = init_data.inp_size_dist[idx];
   }
   // vectors for tracking multiple grain values. makes printout easier
