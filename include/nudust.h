@@ -52,7 +52,6 @@ public:
   void gen_abundances_vector();
   void load_sizeDist();
   void load_shock_params();
-  void create_dest_dadt();
   void load_sputter_params();
   void find_shock();
   void load_environment_data();
