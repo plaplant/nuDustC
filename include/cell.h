@@ -57,8 +57,6 @@ struct cell_input
   std::vector<double> inp_x_cm;
 
   // destruction 
-  std::vector<double> inp_erosion_dadt;
-  std::vector<double> inp_destBins;
   std::vector<double> inp_vd;
 
   // this is from the user specified config params or from the shock params file
