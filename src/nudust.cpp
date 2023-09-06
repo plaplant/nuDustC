@@ -450,7 +450,6 @@ nuDust::load_sputter_params()
         }
     }
     PLOGI << "calculated sputt params";
-    create_dest_dadt();
 }
 
 void
@@ -563,19 +562,6 @@ nuDust::find_shock()
     }
 }
 
-void
-nuDust::create_dest_dadt()
-{
-    for ( const auto &ic : cell_inputs)
-    {
-        auto cell_id = ic.first;
-        cell_inputs[cell_id].inp_destBins.resize(numBins*net.n_reactions);
-        std::fill(cell_inputs[cell_id].inp_destBins.begin(), cell_inputs[cell_id].inp_destBins.end(), 0.0);
-        cell_inputs[cell_id].inp_erosion_dadt.resize(numBins*net.n_reactions);
-        std::fill(cell_inputs[cell_id].inp_erosion_dadt.begin(), cell_inputs[cell_id].inp_erosion_dadt.end(), 0.0);
-    }
-}
-
 void 
 nuDust::load_outputFL_names()
 {
@@ -631,6 +617,7 @@ nuDust::run()
     for (auto i = 0; i < cells.size(); ++i)
     {
         cells[i].solve();
+        break;
     }
     
     PLOGI << "Leaving main integration loop";
