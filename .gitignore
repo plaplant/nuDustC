@@ -4,3 +4,7 @@
 # exclude local IDE folders
 /.cache
 
+#
+*pycache
+
+

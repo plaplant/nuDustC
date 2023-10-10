@@ -17,6 +17,8 @@ class Nudustc(CMakePackage):
     depends_on("sundials@6.6.1: ~ARKODE~CVODES~IDA~IDAS~KINSOL cxxstd=17 ~examples~examples-install+int64")
     depends_on("boost@1.80: +program_options+filesystem+serialization cxxstd=17")
 
+    depends_on("sundials+mpi", when="+mpi")
+    depends_on("sundials~mpi", when="~mpi")
     depends_on("mpi", when="+mpi")
 
     def cmake_args(self):
