@@ -33,23 +33,20 @@ namespace options = boost::program_options;
 nuDust::nuDust ( const std::string &config_file, int sz, int rk) : par_size(sz), par_rank(rk), sputter("data/sputterDict.json")
 {
     nu_config.read_config ( config_file );
-
     // these are always called
     load_network();
     load_initial_abundances();
 
     ////////////////////////////////////////////////
     // these are called depending on the config file
-
-    // reither make a new size bin or read in the size bin from a file
+    // either make a new size bin or read in the size bin from a file
     int (nu_config.sizeDist_file.empty()) ? gen_size_dist() : load_sizeDist();
-
     // nucleation and destrcution + nucleation path
+
     if(!nu_config.environment_file.empty())
     {
         load_environment_data();
     }
-
     // destruction
     if(nu_config.do_destruction==1)
     {
@@ -61,12 +58,10 @@ nuDust::nuDust ( const std::string &config_file, int sz, int rk) : par_size(sz),
         }
         if(!isnan(nu_config.shock_velo))
         {
-            PLOGI << "creating shock";
             // create shock velo and temp arrays from user specifies shock temp and velocity
             gen_shock_array_frm_val();
         }
     }
-    
     ////////////////////////////////////////////
 
     // always run but need run at end
@@ -160,7 +155,7 @@ nuDust::load_sizeDist()
     std::vector<std::string> line_tokens;
 
     if ( sd_file.is_open() )
-    {
+    {   
         std::vector<std::string>  SD_grn_names;
         std::getline ( sd_file, line_buffer );
         boost::split ( line_tokens, line_buffer, boost::is_any_of ( " \t" ), boost::token_compress_on );
@@ -168,21 +163,20 @@ nuDust::load_sizeDist()
 
         std::getline ( sd_file, line_buffer );
         boost::split ( line_tokens, line_buffer, boost::is_any_of ( " \t" ), boost::token_compress_on );
-        
+
         for ( auto it = line_tokens.begin() ; it != line_tokens.end(); ++it )
         {
             size_bins_init.push_back ( boost::lexical_cast<double> ( *it ));
         }
+ 
         numBins = size_bins_init.size();
         double low = std::floor(std::log10(size_bins_init[0]));
         double high = std::floor(std::log10(size_bins_init[numBins-1]))+1;
         auto expDel = (high - low)/static_cast<double>(numBins);
         init_bin_edges.resize(numBins+1);
         std::generate(init_bin_edges.begin(), init_bin_edges.end(), [&, n = 0] () mutable { return std::pow(10.,low+static_cast<double>(n++)*expDel); } );
-
         
         std::vector<int> grn_idx(net.n_reactions);
-        
         // match grians: network ID with input file ID
         for( auto fn_id = 0; fn_id < SD_grn_names.size(); fn_id++){
             for(auto gn_id =0; gn_id < net.n_reactions; gn_id++){
@@ -192,7 +186,6 @@ nuDust::load_sizeDist()
                 }
             }
         }
-        
         while ( std::getline ( sd_file, line_buffer ) )
         {
             boost::split ( line_tokens, line_buffer, boost::is_any_of ( " \t" ), boost::token_compress_on );
@@ -204,6 +197,7 @@ nuDust::load_sizeDist()
             std::copy(size_bins_init.begin(),size_bins_init.end(),cell_inputs[cell_id].inp_binSizes.begin());
             cell_inputs[cell_id].inp_binEdges.resize(numBins+1);
             std::copy(init_bin_edges.begin(),init_bin_edges.end(),cell_inputs[cell_id].inp_binEdges.begin());
+
             for ( auto it = line_tokens.begin() + 2; it != line_tokens.end(); ++it )
             {
                 try
@@ -212,7 +206,7 @@ nuDust::load_sizeDist()
                 }
                 catch(const std::exception& e)
                 {
-                    PLOGE << "bad value in line "<< cell_id;
+                    PLOGE << "bad value in sd file line "<< cell_id;
                     input_SD.push_back ( boost::lexical_cast<double> ( 0.0 ) );
                     exit(1);
                 }
@@ -225,7 +219,6 @@ nuDust::load_sizeDist()
                     cell_inputs[cell_id].inp_size_dist[gid*numBins+sid]=input_SD[grn_idx[gid]*numBins+sid];
                 }
             }
-            
         }
     }
     else
@@ -233,7 +226,6 @@ nuDust::load_sizeDist()
         PLOGE << "Cannot open size dist file " << nu_config.sizeDist_file;
         exit(1);
     }
-    PLOGI << "size distribution loaded";
 }
 
 void
@@ -302,8 +294,6 @@ nuDust::load_initial_abundances()
             premake(Si_idx, O_idx, SiO_idx, cell_id);
         }
         gen_abundances_vector();
-        PLOGI << cell_inputs[1].inp_init_abund[0];
-        PLOGI << "-------";
     }
     else
     {
@@ -614,11 +604,14 @@ nuDust::run()
         std::cout << "! Try again\n";
     }
 
-    for (auto i = 0; i < cells.size(); ++i)
-    {
-        cells[i].solve();
-        break;
-    }
+    //#pragma omp parallel num_threads(6)
+    //{
+        //#pragma omp for nowait
+        for (auto i = 0; i < cells.size(); ++i)
+        {
+            cells[i].solve();
+        }
+    //}
     
     PLOGI << "Leaving main integration loop";
 }

@@ -116,10 +116,9 @@ main(int argc, char* argv[])
   //SCLOG_0(rank) << "nuDust has started";
   //SCLOG_A(rank) << "starting ...\n";
   std::cout << "! nuDust has started\n";
-
   PLOGI << "nuDust has started";
-
   nuDust nd(config_filename, size, rank);
+  std::cout << " defined\n";
   nd.run();
 
 #ifdef ENABLE_BENCHMARK

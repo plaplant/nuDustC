@@ -69,10 +69,10 @@ CellObserver::dump_data(const cell_state& s)
   boost::format fmt("%1$5e ");
   boost::format fmtL("%1$9e ");
 
-  oRS << fmtL % m_state.time << "\n";
+  ofs << fmtL % m_state.time << "\n";
   for(double &val: m_state.abund_moments_sizebins)
-    oRS << fmtL % val << " ";
-  oRS << "\n";
+    ofs << fmtL % val << " ";
+  ofs << "\n";
 
   ofs.close();
 }
@@ -99,7 +99,7 @@ void
 CellObserver::operator()(const cell_state& s)
 {
   ++n_called;
-  if (n_called % m_nstore == 0) {
+  if (n_called % m_ndump == 0) {
     m_state = s;
     dump_data(s);
     restart_dump(s);
