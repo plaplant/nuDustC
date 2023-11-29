@@ -41,10 +41,8 @@ set(NUD_SRCS
   src/cell.cpp
   src/cellobserver.cpp
   src/configuration.cpp
-  src/destruction.cpp
   src/main.cpp
   src/network.cpp
-  src/nucleation.cpp
   src/nudust.cpp
   src/reaction.cpp
 )
@@ -55,11 +53,9 @@ set(NUD_HEADERS
   include/cellobserver.h
   include/configuration.h
   include/constants.h
-  include/destruction.h
   include/elements.h
   include/makima.h
   include/network.h
-  include/nucleation.h
   include/nudust.h
   include/reaction.h
   include/sput_params.h
