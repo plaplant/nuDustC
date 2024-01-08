@@ -6,24 +6,30 @@ project(
   nuDust++
   VERSION 0.1
   DESCRIPTION "dust nucleation and kinetics"
-  LANGUAGES CXX
-)
+  LANGUAGES CXX)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
-  message(FATAL_ERROR "You are trying to configure a build in the source directory. Move to another directory and rerun cmake.\nTIP: It is common to do (from the top of the source dir):\n\t \" $> mkdir build && cd build; cmake ..\" ")
+  message(
+    FATAL_ERROR
+      "You are trying to configure a build in the source directory. Move to another directory and rerun cmake.\nTIP: It is common to do (from the top of the source dir):\n\t \" $> mkdir build && cd build; cmake ..\" "
+  )
 endif()
 
+option(NUDUSTC_ENABLE_OPENMP OFF "Use OpenMP for cell/particle parallelization")
+option(NUDUSTC_ENABLE_MPI OFF "Use MPI for cell/particle parallelizaiton")
+
 # dependencies
-list(APPEND BOOST_COMPONENTS
-  program_options
-  filesystem
-  serialization
-)
+list(APPEND BOOST_COMPONENTS program_options filesystem serialization)
 find_package(Boost REQUIRED ${BOOST_COMPONENTS})
+find_package(SUNDIALS 6.0 REQUIRED)
 
-find_package(OpenMP REQUIRED)
+if(NUDUSTC_ENABLE_OPENMP)
+  find_package(OpenMP REQUIRED)
+endif()
 
-find_package(MPI REQUIRED CXX)
+if(NUDUSTC_ENABLE_MPI)
+  find_package(MPI REQUIRED CXX)
+endif()
 
 include(FetchContent)
 FetchContent_Declare(
@@ -69,53 +75,51 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_executable(${NUD_EXE} ${NUD_SRCS} ${NUD_HEADERS})
 
-target_include_directories(${NUD_EXE}
-  PRIVATE
-    ${PROJECT_SOURCE_DIR}/include
-)
+target_include_directories(${NUD_EXE} PRIVATE ${PROJECT_SOURCE_DIR}/include)
 
-target_link_libraries(${NUD_EXE}
-  PRIVATE
-    Boost::headers
-    Boost::program_options
-    Boost::serialization
-    Boost::filesystem
-    plog::plog
-    MPI::MPI_CXX
-    OpenMP::OpenMP_CXX
-)
+set(with_mpi "$<BOOL:${NUDUSTC_ENABLE_MPI}>")
+set(with_openmp "$<BOOL:${NUDUSTC_ENABLE_OPENMP}>")
 
-target_compile_definitions(${NUD_EXE}
-  PRIVATE
-    $<$<BOOL:${NUDUST_BENCHMARK}>:ENABLE_BENCHMARK>
-  # latest boost fails with gcc@12 
-  # https://github.com/boostorg/phoenix/issues/111
-    BOOST_PHOENIX_STL_TUPLE_H_
-)
+target_link_libraries(
+  ${NUD_EXE}
+  PRIVATE Boost::headers
+          Boost::program_options
+          Boost::serialization
+          Boost::filesystem
+          plog::plog
+          SUNDIALS::cvode
+          SUNDIALS::nvecserial
+          $<${with_mpi}:"MPI::MPI_CXX">
+          $<${with_openmp}:"OpenMP::OpenMP_CXX">)
 
-add_custom_command(
-  TARGET ${NUD_EXE} POST_BUILD
-  COMMAND ${CMAKE_COMMAND} -E copy_directory 
-    ${CMAKE_SOURCE_DIR}/data/ $<TARGET_FILE_DIR:${NUD_EXE}>/data
-)
+target_compile_definitions(
+  ${NUD_EXE}
+  PRIVATE $<$<BOOL:${NUDUST_BENCHMARK}>:ENABLE_BENCHMARK>
+          $<$<BOOL:${NUDUST_ENABLE_MPI}>:NUDUSTC_ENABLE_MPI>
+          # latest boost fails with gcc@12
+          # https://github.com/boostorg/phoenix/issues/111
+          BOOST_PHOENIX_STL_TUPLE_H_)
 
 add_custom_command(
-  TARGET ${NUD_EXE} POST_BUILD
+  TARGET ${NUD_EXE}
+  POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/data/
+          $<TARGET_FILE_DIR:${NUD_EXE}>/data)
+
+add_custom_command(
+  TARGET ${NUD_EXE}
+  POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E make_directory
-    $<TARGET_FILE_DIR:${NUD_EXE}>/output
-)
+          $<TARGET_FILE_DIR:${NUD_EXE}>/output)
 
 add_custom_command(
-  TARGET ${NUD_EXE} POST_BUILD
+  TARGET ${NUD_EXE}
+  POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E make_directory
-    $<TARGET_FILE_DIR:${NUD_EXE}>/restart
-)
-
+          $<TARGET_FILE_DIR:${NUD_EXE}>/restart)
 
 # IDEs should put the headers in a nice place
 source_group(
   TREE "${PROJECT_SOURCE_DIR}/include"
   PREFIX "Header Files"
-  FILES ${NUD_HEADERS}
-)
-
+  FILES ${NUD_HEADERS})

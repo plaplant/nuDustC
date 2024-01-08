@@ -1,0 +1,10 @@
+# exclude CMake build dirs
+/build
+
+# exclude local IDE folders
+/.cache
+
+#
+*pycache*
+
+
