@@ -464,7 +464,7 @@ nuDust::load_environment_data()
     else {
         PLOGE << "Cannont open environment file " << nu_config.environment_file;
     }
-    PLOGI << "loaded env file";
+    PLOGI << "loaded environment file";
 }
 // todo :: rename this somethign more fitting
 void
@@ -622,14 +622,12 @@ nuDust::create_simulation_cells()
         {
             if ( std::filesystem::exists(nameRS+std::to_string ( ic.first ) + ".dat"))
             {
-                PLOGI << "creating restart for cell: " << ic.first;
                 create_restart_cells(ic.first);
             }
-            PLOGI << "trying to emplace back cell: " << ic.first;
             cells.emplace_back ( &net, &sputARR, &nu_config, ic.first, initial_elements, ic.second );
-            PLOGI << "success for cell: " << ic.first;
         }
     }
+    PLOGI << "Created " << cell_inputs.size() << " cells";
 }
 
 void
@@ -664,7 +662,6 @@ nuDust::run()
             cells[i].solve(); 
         }
     }
-
 
     PLOGI << "Leaving main integration loop";
 }

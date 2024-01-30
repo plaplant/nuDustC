@@ -121,7 +121,7 @@ int main(int argc, char *argv[]) {
   std::cout << "! nuDust has started\n";
   PLOGI << "nuDust has started";
   nuDust nd(config_filename, size, rank);
-  std::cout << " defined\n";
+  std::cout << "! defined cells\n";
   nd.run();
 
 #ifdef ENABLE_BENCHMARK
