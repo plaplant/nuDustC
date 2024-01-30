@@ -28,6 +28,8 @@ class nuDust
   std::vector<std::string>        initial_elements;
   std::map<uint32_t, cell_input>  cell_inputs;
   std::vector<cell>               cells;
+  std::vector<cell>             RScells;
+  std::map<uint32_t, cell_input> RScell_input;
   network               net;
   params                sputARR;
   std::vector<double>   init_size_bins; // sizes in the size dist
@@ -49,7 +51,6 @@ public:
 
   void load_network();
   void load_initial_abundances();
-  void gen_abundances_vector();
   void load_sizeDist();
   void load_shock_params();
   void load_sputter_params();
@@ -59,6 +60,8 @@ public:
   void gen_size_dist();
   void account_for_pileUp();
   void gen_shock_array_frm_val();
+  void create_restart_cells(int cid);
+  void generate_sol_vector();
   void create_simulation_cells();
   int get_element_index(const std::string& elem) const;
   void premake(const int s1, const int s2, const int sp, const int cell_id);

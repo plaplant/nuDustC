@@ -32,8 +32,8 @@ others to do so.*/
 
 using boost::math::interpolators::makima;
 
-const size_t CELL_MAX_STEPS              = 10000000000000;
-const size_t CELL_MAXIMUM_STEPPER_RESETS = 1000;
+const size_t CELL_MAX_STEPS              = 100000000000000;
+const size_t CELL_MAXIMUM_STEPPER_RESETS = 100000;
 const double CELL_MINIMUM_ABUNDANCE      = 1.0E-1;
 
 const double NO_REBINNING_MAX = 1e4;
@@ -46,6 +46,8 @@ struct cell_input
 
   std::vector<double> inp_abund;
   std::vector<double> inp_init_abund;
+
+  std::vector<double>  inp_solution_vector;
 
   // from enviornment file
   std::vector<double> inp_times;
@@ -68,6 +70,7 @@ struct cell_input
   std::vector<double> inp_binSizes;
   std::vector<double> inp_binEdges;
   std::vector<double> inp_size_dist;
+  std::vector<double> inp_delSZ;
 
   // user defined start time. assumes homologous expansion to compute from cell time. 
   // only use for destruction, no nucleation

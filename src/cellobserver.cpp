@@ -79,19 +79,32 @@ CellObserver::dump_data(const cell_state& s)
 
 // write data to restart file
 void
-CellObserver::restart_dump (const cell_state& s)
+CellObserver::restart_dump(const cell_state& s)
 {
-  m_state = s;
-  oRS.open(RSname);
-  boost::format fmt("%1$5e ");
-  boost::format fmtL("%1$9e ");
+    oRS.open(RSname);
+    boost::format fmt("%1$5e ");
+    boost::format fmtL("%1$9e ");
+    oRS << (m_state.time) << "\n";
 
-  oRS << fmtL % m_state.time << "\n";
-  for(double &val: m_state.abund_moments_sizebins)
-    oRS << fmtL % val << " ";
-  oRS << "\n";
+    for(int idx = 0; idx < m_state.vd.size(); idx ++)
+    {
+        oRS << fmt % (m_state.vd[idx]) << " ";
+    }
+    oRS << "\n";
 
-  oRS.close();
+    for(int idx = 0; idx < m_state.runningTot_size_change.size(); idx ++)
+    {
+        oRS << fmt % (m_state.runningTot_size_change[idx]) << " ";
+    }
+    oRS << "\n";
+    // solution vector
+    for(int idx = 0; idx < m_state.abund_moments_sizebins.size(); idx ++)
+    {
+        oRS << fmt % (m_state.abund_moments_sizebins[idx]) << " ";
+    }
+    oRS << "\n";
+
+    oRS.close();
 }
 
 // call to class, if user specified, write to file or restart file

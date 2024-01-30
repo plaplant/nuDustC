@@ -67,22 +67,15 @@ void
 cell::set_init_data(const spec_v& init_s, const cell_input& init_data)
 {
   using constants::N_MOMENTS;
+  
+  // solution vector and abundances
+  cell_st.abund_moments_sizebins.assign(init_data.inp_solution_vector.begin(),init_data.inp_solution_vector.end());
   cell_st.init_abund.resize(cell_st.numGas);
-  std::fill(cell_st.init_abund.begin(), cell_st.init_abund.end(), 0.0E0);
-  // add moments to solution vector
-  cell_st.abund_moments_sizebins.resize(cell_st.numGas + cell_st.numReact * N_MOMENTS + cell_st.numBins * cell_st.numReact);
-  std::fill(cell_st.abund_moments_sizebins.begin(),cell_st.abund_moments_sizebins.end(),0.0);
   for (size_t i = 0; i < cell_st.numGas; ++i) {
     auto idx = net->get_species_index(init_s[i]);
     if (idx != -1) {
       cell_st.init_abund[idx] = init_data.inp_init_abund[i];
-      cell_st.abund_moments_sizebins[idx] = cell_st.init_abund[idx];
     }
-  }
-  // add size bins to solution vector
-  int sd_start = cell_st.numGas + cell_st.numReact * N_MOMENTS;
-  for (size_t idx = 0; idx < cell_st.numBins*cell_st.numReact; idx++) {
-    cell_st.abund_moments_sizebins[idx+sd_start] = init_data.inp_size_dist[idx];
   }
   // vectors for tracking multiple grain values. makes printout easier
   cell_st.cbars.resize(net->n_nucleation_reactions);
@@ -97,8 +90,8 @@ cell::set_init_data(const spec_v& init_s, const cell_input& init_data)
   cell_st.edges.assign(init_data.inp_binEdges.begin(),init_data.inp_binEdges.end());
   cell_st.vd.assign(init_data.inp_vd.begin(),init_data.inp_vd.end());
   cell_st.rebin_chng.resize(cell_st.numBins * cell_st.numReact);
-  cell_st.runningTot_size_change.resize(cell_st.numBins * cell_st.numReact);
-  std::fill(cell_st.runningTot_size_change.begin(),cell_st.runningTot_size_change.end(),0.0);
+  cell_st.runningTot_size_change.assign(init_data.inp_delSZ.begin(),init_data.inp_delSZ.end());
+
 }
 
 // load data and setup interpolators
@@ -111,15 +104,28 @@ cell::set_env_data(const cell_input& input_data)
     PLOGD << "No environment file loaded.";
     return;
   }
+  
+  
+
+
+
   env_times.assign(input_data.inp_times.begin(), input_data.inp_times.end());
-  env_temp.assign(input_data.inp_temp.begin(),
-                          input_data.inp_temp.end());
-  env_volumes.assign(input_data.inp_volumes.begin(),
-                     input_data.inp_volumes.end());
+  env_temp.assign(input_data.inp_temp.begin(),input_data.inp_temp.end());
+  env_volumes.assign(input_data.inp_volumes.begin(),input_data.inp_volumes.end());
   env_rho.assign(input_data.inp_rho.begin(), input_data.inp_rho.end());
   env_pressure.assign(input_data.inp_pressure.begin(),input_data.inp_pressure.end());
+
+  cell_st.temperature = input_data.inp_shock_temp;
+  cell_st.rho      = env_rho[0];
     
   cell_st.volume_0      = env_volumes[0];
+  cell_st.volume        = env_volumes[0];
+
+  if(input_data.inp_times.size()==1)
+  {
+    return;
+  }
+
   std::vector<double> times = env_times;
   env_temp_interp = makima(std::move(times), std::move(env_temp));
   std::vector<double> times1 = env_times;
@@ -145,13 +151,16 @@ cell::check_solution(const std::vector<double>& x)
 void
 cell::solve()
 {
+  
   using constants::k_B;
   using constants::kB_eV;
   using numbers::one;
+  using constants::yrs2s;
+  
   auto abs_err = config->ode_abs_err, rel_err = config->ode_rel_err;
   double max_dt = config->ode_dt_max;// min_dt = config->ode_dt_min;
   double time_start, time_end;
-  if(!config->environment_file.empty())
+  if(!config->environment_file.empty() && env_times.size()!=1)
   {
     time_start = env_times[0];
     time_end = env_times.back();
@@ -176,6 +185,7 @@ cell::solve()
   calc_state_vars(cell_st.abund_moments_sizebins, time_start);
   CellObserver observer(cid,net,config);
   observer.init_dump(cell_st);
+  
   while ((stepper.current_time() < time_end)) {
     auto t0               = stepper.current_time();
     auto dt               = stepper.current_time_step();
@@ -184,7 +194,7 @@ cell::solve()
     cell_st.dt               = dt;
     integration_abandoned = false;
     if (t0 + dt > time_end) {
-      PLOGI << "finished integration, t_current: " << t0;
+      PLOGI << "finished integration cell: " << cid << ", t_current: " << t0;
       break;
     }
     stepper.do_step(std::ref(*(this)));
@@ -199,11 +209,11 @@ cell::solve()
       n_stepper_reset = 0;
     }
     if (n_solve_steps > CELL_MAX_STEPS) {
-      PLOGI << "too many solve steps, exiting at t: " << stepper.current_time();
+      PLOGI << "too many solve steps, exiting cell " << cid << " at t: " << stepper.current_time();
       break;
     }
     if (n_stepper_reset > CELL_MAXIMUM_STEPPER_RESETS) {
-      PLOGI << "TOO MANY RESTARTS, exiting at t = " << stepper.current_time();
+      PLOGI << "TOO MANY RESTARTS, exiting cell " << cid << " at t = " << stepper.current_time();
       break;
     }
     if(n_solve_steps%dumpN==0.0)
@@ -216,6 +226,7 @@ cell::solve()
     }
     ++n_solve_steps;
   }
+  PLOGI << "done cell: " << cid;
   observer.finalSave(cell_st);
 }
 
@@ -241,7 +252,7 @@ cell::calc_state_vars(const std::vector<double>& x, const double time)
   using constants::k_B;
   using constants::kB_eV;
 
-  if(!config->environment_file.empty())
+  if(!config->environment_file.empty() && env_times.size()!=1)
   {
     cell_st.temperature = env_temp_interp(time);
     cell_st.volume   = env_volume_interp(time);

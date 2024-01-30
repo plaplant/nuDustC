@@ -15,17 +15,20 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
   )
 endif()
 
-option(NUDUSTC_ENABLE_OPENMP OFF "Use OpenMP for cell/particle parallelization")
+option(NUDUSTC_ENABLE_OPENMP ON "Use OpenMP for cell/particle parallelization")
 option(NUDUSTC_ENABLE_MPI OFF "Use MPI for cell/particle parallelizaiton")
+
 
 # dependencies
 list(APPEND BOOST_COMPONENTS program_options filesystem serialization)
 find_package(Boost REQUIRED ${BOOST_COMPONENTS})
-find_package(SUNDIALS 6.0 REQUIRED)
+find_package(SUNDIALS 5.8 REQUIRED) 
 
 if(NUDUSTC_ENABLE_OPENMP)
   find_package(OpenMP REQUIRED)
 endif()
+
+find_package(OpenMP REQUIRED)
 
 if(NUDUSTC_ENABLE_MPI)
   find_package(MPI REQUIRED CXX)
@@ -90,7 +93,8 @@ target_link_libraries(
           SUNDIALS::cvode
           SUNDIALS::nvecserial
           $<${with_mpi}:"MPI::MPI_CXX">
-          $<${with_openmp}:"OpenMP::OpenMP_CXX">)
+          ##$<${with_openmp}:"OpenMP::OpenMP_CXX">
+          OpenMP::OpenMP_CXX)
 
 target_compile_definitions(
   ${NUD_EXE}
