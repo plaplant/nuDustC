@@ -3,6 +3,8 @@
 # nuDustC
 Nucleating Dust Code in C++
 
+nuDustC++ is used to calculate the dust neclation and destruction in gaseous systems. 
+
 ***All Units are in CGS***
 
 ### To Build & Run
@@ -49,7 +51,7 @@ You may need to add the paths of the packages to *LD_LIBRARY_PATH*. If using con
 LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:~/miniconda3/lib ./nudust++ -c data/inputs/test_config.ini
 ```
 
-Or specifying the paths to the packages and libraries.
+Or specifying the paths to the packages and libraries in *LD_LIBRARY_PATH*.
 
 ### Inputs
 Required: Config file. This lists the various input information such as data files, integration parameters, and calculation options.
