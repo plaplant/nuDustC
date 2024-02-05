@@ -20,8 +20,6 @@ struct configuration
   double ode_dt_0;
   double ode_dt_min;
   double ode_dt_max;
-  double ode_time_0;
-  double ode_time_n;
   double ode_abs_err;
   double ode_rel_err;
   double low_sd_exp;
@@ -32,9 +30,8 @@ struct configuration
   double sim_start_time;
 
 
-  int io_disk_n_steps;
-  int io_screen_n_steps;
-  int create_dump_file_n_steps;
+  int io_dump_n_steps;
+  int io_restart_n_steps;
   int bin_number;
 
   int do_destruction;
@@ -46,7 +43,7 @@ struct configuration
   std::string shock_file;
   std::string environment_file;
 
-  //probably no longer needed
+  // used to differentiate runs or models
   std::string mod_number;
   
 
