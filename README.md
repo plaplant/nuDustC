@@ -32,17 +32,13 @@ Run nuDustc with
 $> ./nudust++ -c data/inputs/test_config.ini
 ```
 
-You may need to add the paths of the packages to '''LD_LIBRARY_PATH'''. If using conda:
-
-```
-LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:~/miniconda3/lib
-```
-
-nuDustC++ can then be run by:
+You may need to add the paths of the packages to *LD_LIBRARY_PATH*. If using conda nuDustC++ can then be run by:
 
 ```
 LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:~/miniconda3/lib ./nudust++ -c data/inputs/test_config.ini
 ```
+
+Or specifying the paths to the packages and libraries.
 
 ### Inputs
 Required: Config file. This lists the various input information such as data files, integration parameters, and calculation options.
@@ -131,7 +127,7 @@ To run a test of nudustc++,
 This will produce data files in teh build directory's "output/" directory and restart data in the "restart/" directory.
 
 # Restarting a Run
-nuDustC++ automatically checks for restart files when creating each cell. If a restart file is found, that data is loaded into the cell object. If no restart file is found, the cell is initialized with data from the input files.
+nuDustC++ automatically checks for restart files when creating each cell. If a restart file is found, that data is loaded into the cell object. If no restart file is found, the cell is initialized with data from the input files. Make sure the same config file used to start the run is selected when restarting. 
 
 # Common Pitfalls
 If the compiler cannot find required packages or libraries, make sure LD_LIBRARY_PATH is up to date and points to the location of each package or library.
