@@ -43,8 +43,8 @@ configuration::configuration() : desc ( "configuration" )
     desc.add_options() ( "do_nucleation", options::value<int> ( &do_nucleation )->default_value (0), "do nucleation calculations" );
 
     // print out and save to file controls
-    desc.add_options() ( "io_restart_n_steps",options::value<int>(&io_disk_n_steps)->default_value(1000),"write restart file to disk every n steps");
-    desc.add_options() ( "io_dump_n_steps",options::value<int>(&io_screen_n_steps)->default_value(1000), "write dump file to disk  every n steps");
+    desc.add_options() ( "io_restart_n_steps",options::value<int>(&io_restart_n_steps)->default_value(1000),"write restart file to disk every n steps");
+    desc.add_options() ( "io_dump_n_steps",options::value<int>(&io_dump_n_steps)->default_value(1000), "write dump file to disk  every n steps");
     
 
     // user specified shock parameters. shock parameters are applied to all cells regardless of depth
