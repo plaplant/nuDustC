@@ -47,6 +47,7 @@ using boost::math::interpolators::makima;
 using namespace boost::numeric::odeint;
 using namespace std::chrono;
 
+// defined parameters needed later and call funcitons to initialize data with input data
 cell::cell ( network* n, params* sputARR, configuration* con, uint32_t id, const spec_v &init_s,
              const cell_input &input_data )
     : net (n), sputARR (sputARR), config (con), cid (id), elm("data/elements.json")
@@ -105,10 +106,6 @@ cell::set_env_data(const cell_input& input_data)
     return;
   }
   
-  
-
-
-
   env_times.assign(input_data.inp_times.begin(), input_data.inp_times.end());
   env_temp.assign(input_data.inp_temp.begin(),input_data.inp_temp.end());
   env_volumes.assign(input_data.inp_volumes.begin(),input_data.inp_volumes.end());
@@ -121,6 +118,7 @@ cell::set_env_data(const cell_input& input_data)
   cell_st.volume_0      = env_volumes[0];
   cell_st.volume        = env_volumes[0];
 
+  // return if there is only one initial time, otherwise continue and setup splines
   if(input_data.inp_times.size()==1)
   {
     return;
@@ -147,7 +145,7 @@ cell::check_solution(const std::vector<double>& x)
   return true;
 }
 
-// setup and start integrator. ther's a few checks to stop it 
+// setup and start integrator, initialize cellObserver which deals with data output. There're a few checks to stop integration. 
 void
 cell::solve()
 {
@@ -245,7 +243,7 @@ cell::check_reactions(const std::vector<double>& x)
   }
 }
 
-// update state variables from interpolator
+// update state variables from interpolator or if no spline was created, update cell temperature
 void
 cell::calc_state_vars(const std::vector<double>& x, const double time)
 {
@@ -280,7 +278,7 @@ void cell::nucleate(const std::vector<double>& x)
   int sd_start = cell_st.numGas + cell_st.numReact * N_MOMENTS;
   for (size_t gidx = 0; gidx < cell_st.numReact; ++gidx) 
   {
-    // finding key specie for reaction ad identifying the reactants and their index
+    // finding key specie for reaction and identifying the reactants and their index
     auto reaction_idx = net->nucleation_reactions_idx[gidx];
     auto num_ks       = net->ks_lists_idx[gidx].size();
     auto key_spec_idx = net->ks_lists_idx[gidx][0];
@@ -296,6 +294,7 @@ void cell::nucleate(const std::vector<double>& x)
       }
     }
     cell_st.parts[gidx].ks_idx = key_spec_idx;
+    // initializing and zeroing nuclation arrays
     if (x[key_spec_idx] < CELL_MINIMUM_ABUNDANCE) 
     {
       cell_st.parts[gidx].is_nucleating = 0;
@@ -309,6 +308,7 @@ void cell::nucleate(const std::vector<double>& x)
       elm.elements.at(net->species[cell_st.parts[gidx].ks_idx]).mass * amu2g;
     std::vector<double> react_nu;
     std::vector<int> react_idx;
+    // stoichiometry calculations for each reaction
     auto stoich_ks = 0.0;
     for (const auto& kv: net->nucleation_species_count[gidx]) 
     {
@@ -387,7 +387,7 @@ void cell::nucleate(const std::vector<double>& x)
                       c1 * (1. - 1. / cell_st.S[gidx]);
       // critical radius nozawa et al. 2003
       cell_st.ncrit[gidx] = std::pow(2.0 / 3.0 * (mu / cell_st.parts[gidx].lnS), 3.0) + iw;
-      // finding growth from the dadt
+      // finding growth from the dadt and storing it to determine if rebinning is needed
       double growth = cell_st.dadt[gidx] * cell_st.dt;
       for (int bidx = 0; bidx < cell_st.numBins; ++bidx)
       {
@@ -417,7 +417,7 @@ void cell::nucleate(const std::vector<double>& x)
   }
 }
 
-// checking if a grain nucleates, dfinds size and adds it to the solution vector
+// checking if a grain nucleates, finds the size and add it to the solution vector
 void cell::add_new_grn(const std::vector<double>& x)
 {
   using constants::N_MOMENTS;
@@ -450,7 +450,7 @@ void cell::add_new_grn(const std::vector<double>& x)
   }
 }
 
-// sputtering yield
+// calculate the sputtering yield for an impactor
 double cell::Y(const double& E, const int grnid, const int gsID)
 {
     using constants::pi;
@@ -520,7 +520,7 @@ double cell::NonTherm(const double& sidx, const int gidx, const int gsID)
     return  pref * Y(x,gidx,gsID); 
 }
 
-// determin which sputtering occurs, clalculate it, store erosion amount
+// determin which sputtering occurs, clalculate it, store the erosion amount to determine if rebinning is needed.
 void cell::destroy()
 {
   using constants::pi;
@@ -551,10 +551,12 @@ void cell::destroy()
                 if(cell_st.abund_moments_sizebins[gsID] == 0.0) continue;
                 // s_i2 is unitless, invkT is in cgs, vd is in cm/s
                 double s_i2 = sputARR->miGRAMS[gsID] * onehalf * cell_st.invkT * square(cell_st.vd[idx]);
+                // non-thermal sputtering occurrs
                 if( s_i2 > ten) 
                 {
                     dadt +=  NonTherm(sidx+sd_start,gidx,gsID);
                 }
+                // thermal sputtering occurs
                 else 
                 {
                     dadt += Therm(gidx,gsID);
@@ -562,6 +564,7 @@ void cell::destroy()
             }
         }
         cell_st.runningTot_size_change[idx] -= dadt*cell_st.dt;
+        // calculate the slow down of the shock and update
         double temp_velo = calc_dvdt(cell_st.grn_sizes[sidx],cell_st.vd[idx],gidx) * cell_st.dt; // in cm/s
         if(cell_st.vd[idx] - std::abs(temp_velo) >= 0.0)
         {
@@ -603,7 +606,7 @@ double cell::calc_dvdt(const double& cross_sec, const double& vd, const int grni
     return  -std::abs(yield); // should be in cm/s, cross sec is in cm
 }
 
-// rebin grains based on grwoth and erosion
+// rebin grains based on the growth and erosion totals
 void cell::rebin(const std::vector<double>& x, std::vector<double>& dxdt)
 {
   using constants::kBeta;
@@ -627,10 +630,9 @@ void cell::rebin(const std::vector<double>& x, std::vector<double>& dxdt)
     {
       auto idx = (gidx*cell_st.numBins)+bidx;
       if (cell_st.abund_moments_sizebins[sd_start + idx]==0.0) continue;
-      // move up a bin
-      if(cell_st.grn_sizes[bidx]+cell_st.runningTot_size_change[idx] < cell_st.edges[bidx+1])
+      // move down a bin
+      if(cell_st.grn_sizes[bidx]+cell_st.runningTot_size_change[idx] < cell_st.edges[bidx])
       {
-        //moving down a bin
         if(bidx==0)continue;
         else
         {
@@ -642,6 +644,7 @@ void cell::rebin(const std::vector<double>& x, std::vector<double>& dxdt)
         cell_st.rebin_chng[bidx] -= 1.0;
         cell_st.rebin_chng[bidx-1] += 1.0;
       }
+      // move up a bin
       if(cell_st.grn_sizes[bidx]+cell_st.runningTot_size_change[idx] > cell_st.edges[bidx+1])
       {
         if(bidx==cell_st.numBins-1) continue;
@@ -665,7 +668,7 @@ void cell::rebin(const std::vector<double>& x, std::vector<double>& dxdt)
   }
 }
 
-// called by integrator, updates x, dxdt
+// called by integrator, updates x, dxdt, calls the relevant calculations
 void
 cell::operator()(const std::vector<double>& x, std::vector<double>& dxdt, const double t)
 {
