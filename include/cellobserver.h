@@ -33,7 +33,7 @@ private:
   double m_time;
   double m_elapsed;
 
-  uint32_t m_nstore, m_ndump;
+  uint32_t m_nrestart, m_ndump;
   uint32_t n_called;
 
   std::ofstream ofs;
