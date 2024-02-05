@@ -105,17 +105,22 @@ If both are set to '1', both destruction and nucleation are calculated.
 *mod_number*: This specifies the model used in order to differentiate multiple runs.
 
 # Functionality
-Nucleation & Destruction
-  Required Input Files: Hydrodynamical Trajectory file (Time, Temperature, Volumes, Density, Pressure, Velocity), Abundance File, & Network File
+There are 5 main calculation paths including destruction or nucleation calculations. Destruction has 2 main branches based on if the user is specifying shock values or reading them in from a file. 
+
+Nucleation & Destruction With User Input Shock Temperature & Velocity
+  Required Input Files: Hydrodynamical Trajectory file (Time, Temperature, Volumes, Density, Pressure, Velocity), Abundance File, & Network File, Shock Velocity, Shock Temperature, Shock Time, Pile up factor, Size Distribution File or Size Parameters
+
+Nucleation & Destruction With Shock Times and Velocities from a file
+  Required Input Files: Hydrodynamical Trajectory file (Time, Temperature, Volumes, Density, Pressure, Velocity), Abundance File, & Network File, Shock Velocity, Shock Temperature, Shock Time, Pile up factor, Size Distribution File or Size Parameters
 
 Nucleation
-  Required Input Files: Hydrodynamical Trajectory file (Time, Temperature, Volumes, Density), Abundance File, & Network File
+  Required Input Files: Hydrodynamical Trajectory file (Time, Temperature, Volumes, Density), Abundance File, & Network File, Size Distribution File or Size Parameters
 
 Destruction With Shock Times and Velocities from a file
-  Required Input Files: Shock File (Cell #, Time, Shock Temperature, Shock Velocity), Pile up factor, Size Distribution File, Abundance File, & Network File
+  Required Input Files: Shock File (Cell #, Time, Shock Temperature, Shock Velocity), Size Distribution File or Size Parameters, Abundance File, & Network File
 
 Destruction With User Input Shock Temperature & Velocity
-  Required Input Files: Shock Velocity, Shock Temperature, Shock Time, Pile up factor, Size Distribution File, Abundance File, & Network File
+  Required Input Files: Shock Velocity, Shock Temperature, Shock Time, Pile up factor, Size Distribution File or Size Parameters, Abundance File, & Network File
 
 # Testing
 To run a test of nudustc++,
@@ -130,6 +135,8 @@ This will produce data files in teh build directory's "output/" directory and re
 nuDustC++ automatically checks for restart files when creating each cell. If a restart file is found, that data is loaded into the cell object. If no restart file is found, the cell is initialized with data from the input files.
 
 # Common Pitfalls
+If the compiler cannot find required packages or libraries, make sure LD_LIBRARY_PATH is up to date and points to the location of each package or library.
 
+Ensure the configuration file points to the location of each input file and contains the needed parameters for the calculation path. 
 
 
