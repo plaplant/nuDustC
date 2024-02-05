@@ -12,10 +12,9 @@ This build uses cmake.
 ### Plog 
 Plog is a header only package. Running cmake fetches Plog, but it can also be aquired by:
 
-'''
+```
 git clone git@github.com:SergiusTheBest/plog.git
-'''
-
+```
 
 # Building nuDustC++
 In order to build nuDustC++, go to the head of the git repository (nudustc/) and run:
