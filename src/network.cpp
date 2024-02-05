@@ -24,6 +24,7 @@ network::~network()
 
 }
 
+// read the network file and update the species list
 void
 network::read_network ( const std::string &chemfile )
 {
