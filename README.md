@@ -156,6 +156,10 @@ If the compiler cannot find required packages or libraries, make sure LD_LIBRARY
 
 Ensure the configuration file points to the location of each input file and contains the needed parameters for the calculation path. 
 
+# Community guidelines
+
+If you use nuDustC++ and need help, submit an issue to the nuDustC++ repository. If you'd like to contribute, just fork and submit a pull request. One of the developers will review your PR.
+
 # Copyright
 BSD 3-Clause License
 
@@ -186,8 +190,5 @@ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-# Community guidelines
-
-If you use nuDustC++ and need help, submit an issue to the nuDustC++ repository. If you'd like to contribute, just fork and submit a pull request. One of the developers will review your PR.
 
 
