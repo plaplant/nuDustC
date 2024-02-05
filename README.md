@@ -117,6 +117,15 @@ Destruction With Shock Times and Velocities from a file
 Destruction With User Input Shock Temperature & Velocity
   Required Input Files: Shock Velocity, Shock Temperature, Shock Time, Pile up factor, Size Distribution File or Size Parameters, Abundance File, & Network File
 
+# Selecting Integrators and Interpolators
+The integrator is setup in *src/cell.cpp* in the *solve()* funtion. nuDustC++ comes defaulted with a runge-kutta doPri 5 integrator. Additional information on the available integrators offered by Boost can be found at:
+
+https://www.boost.org/doc/libs/1_78_0/libs/numeric/odeint/doc/html/index.html
+
+nuDustC++ currently uses a makima 1-D interpolator. The interpolator is defined in *include/cell.h* in the 'cell' class declaration. Additional interpolators offered by Boost can be found at:
+
+https://www.boost.org/doc/libs/1_78_0/libs/math/doc/html/interpolation.html
+
 # Testing
 To run a test of nudustc++,
 
