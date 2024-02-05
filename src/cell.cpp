@@ -214,6 +214,8 @@ cell::solve()
       PLOGI << "TOO MANY RESTARTS, exiting cell " << cid << " at t = " << stepper.current_time();
       break;
     }
+    // the user can specify restart and data dumps here or in the cellObserver operator
+    /*
     if(n_solve_steps%dumpN==0.0)
     {
       observer.dump_data(cell_st);
@@ -222,6 +224,7 @@ cell::solve()
     {
       observer.restart_dump(cell_st);
     }
+    */
     ++n_solve_steps;
   }
   PLOGI << "done cell: " << cid;
