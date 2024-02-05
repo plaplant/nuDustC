@@ -174,8 +174,8 @@ cell::solve()
   auto dt0             = config->ode_dt_0;
   auto rkd             = runge_kutta_dopri5<std::vector<double>>{};
   auto stepper         = make_dense_output(abs_err, rel_err, max_dt, rkd);
-  auto dumpN           = config->io_disk_n_steps;
-  auto RSN             = config->io_screen_n_steps;
+  auto dumpN           = config->io_dump_n_steps;
+  auto RSN             = config->io_restart_n_steps;
   size_t n_solve_steps   = 0;
   size_t n_stepper_reset = 0;
   cell_st.kT = k_B * cell_st.temperature; // ergs
