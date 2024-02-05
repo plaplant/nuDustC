@@ -16,6 +16,17 @@ Plog is a header only package. Running cmake fetches Plog, but it can also be aq
 git clone git@github.com:SergiusTheBest/plog.git
 ```
 
+### Boost
+If using conda, install boost as:
+
+```
+conda install conda-forge::boost
+```
+
+Further documentation and installation of Boost can be found at:
+
+https://www.boost.org/
+
 # Building nuDustC++
 In order to build nuDustC++, go to the head of the git repository (nudustc/) and run:
 
