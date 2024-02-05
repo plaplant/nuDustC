@@ -92,17 +92,9 @@ target_link_libraries(
           Boost::serialization
           Boost::filesystem
           plog::plog
-          <<<<<<<
-          HEAD
-          # SUNDIALS::cvode SUNDIALS::nvecserial
-          =======
           $<${use_sundials}:"SUNDIALS::cvode;SUNDIALS::nvecserial">
-          >>>>>>>
-          8e57e9f
-          (added option to enable/disable sundials build)
           $<${with_mpi}:"MPI::MPI_CXX">
-          # $<${with_openmp}:"OpenMP::OpenMP_CXX">
-          OpenMP::OpenMP_CXX)
+          $<${with_openmp}:"OpenMP::OpenMP_CXX">)
 
 target_compile_definitions(
   ${NUD_EXE}
