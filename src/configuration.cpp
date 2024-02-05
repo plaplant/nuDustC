@@ -21,8 +21,6 @@ configuration::configuration() : desc ( "configuration" )
 
     // ODE description
     desc.add_options() ( "ode_dt_0", options::value<double> ( &ode_dt_0 )->default_value ( 1.0E-3 ), "initial time step" );
-    desc.add_options() ( "ode_time_0", options::value<double> ( &ode_time_0 )->default_value ( 0.0E0 ), "integration start time" );
-    desc.add_options() ( "ode_time_n", options::value<double> ( &ode_time_n )->default_value ( 1.0E0 ), "integration end time" );
     desc.add_options() ( "ode_abs_err", options::value<double> ( &ode_abs_err )->default_value ( 1.0E-6 ), "solver absolute error criteria" );
     desc.add_options() ( "ode_rel_err", options::value<double> ( &ode_rel_err )->default_value ( 1.0E-6 ), "solver relative error criteria" );
     desc.add_options() ( "ode_dt_min", options::value<double> ( &ode_dt_min )->default_value ( 1.0E-6 ), "solver minimum allowed dt" );
@@ -45,10 +43,9 @@ configuration::configuration() : desc ( "configuration" )
     desc.add_options() ( "do_nucleation", options::value<int> ( &do_nucleation )->default_value (0), "do nucleation calculations" );
 
     // print out and save to file controls
-    desc.add_options() ( "io_disk_n_steps",options::value<int>(&io_disk_n_steps)->default_value(1000),"write variables to disk every n steps");
-    desc.add_options() ( "io_screen_n_steps",options::value<int>(&io_screen_n_steps)->default_value(1000), "write (short) variables to screen every n steps");
-    desc.add_options() ( "create_dump_file_n_steps",options::value<int>(&create_dump_file_n_steps)->default_value(1000), "write variables to a restart file every n steps");
-
+    desc.add_options() ( "io_restart_n_steps",options::value<int>(&io_disk_n_steps)->default_value(1000),"write restart file to disk every n steps");
+    desc.add_options() ( "io_dump_n_steps",options::value<int>(&io_screen_n_steps)->default_value(1000), "write dump file to disk  every n steps");
+    
 
     // user specified shock parameters. shock parameters are applied to all cells regardless of depth
     desc.add_options() ( "pile_up_factor", options::value<double> ( &pile_up_factor )->default_value ( 1.0 ), "shock pile up factor" );
