@@ -44,7 +44,7 @@ FetchContent_MakeAvailable(plog)
 
 option(NUDUST_BENCHMARK "Enable benchmark wrappers" OFF)
 
-set(NUD_EXE "nudust++")
+set(NUD_EXE "nudustc++")
 
 set(NUD_SRCS
   src/cell.cpp
