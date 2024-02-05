@@ -6,7 +6,7 @@ Nucleating Dust Code in C++
 ***All Units are in CGS***
 
 ### To Build & Run
-**Required:** OpenMP, MPI, Boost, Plog.
+**Required:** OpenMP, MPI, Boost, SunDials, Plog.
 This build uses cmake. 
 
 ### Plog 
