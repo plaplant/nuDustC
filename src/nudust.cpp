@@ -70,6 +70,7 @@ nuDust::nuDust ( const std::string &config_file, int sz, int rk) : par_size(sz),
     create_simulation_cells();
 }
 
+// make sure the network is loaded
 void
 nuDust::load_network()
 {
@@ -78,6 +79,7 @@ nuDust::load_network()
     PLOGI << "loaded network file";
 }
 
+// return the index of the element in the abundance vector
 int
 nuDust::get_element_index(const std::string& elem) const
 {
@@ -89,6 +91,7 @@ nuDust::get_element_index(const std::string& elem) const
   return idx;
 }
 
+// create a size distribution from the user specified size parameters
 void
 nuDust::gen_size_dist()
 {
@@ -106,8 +109,7 @@ nuDust::gen_size_dist()
     std::generate(init_bin_edges.begin(), init_bin_edges.end(), [&, n = 0] () mutable { return std::pow(10.,low+static_cast<double>(n++)*expDel); } );
 
     init_size_bins.resize(numBins);
-    // todo
-    // fix this, probably wrong
+    // this is compiling, double check it generates the correct bin sizes
     std::generate(init_size_bins.begin(), init_size_bins.end(), [&, n = 0,m=1] () mutable { return (init_bin_edges[static_cast<int>(n++)]+init_bin_edges[static_cast<int>(m++)])/2.0; } );    
     for ( const auto &ic : cell_inputs)
     {
@@ -124,6 +126,7 @@ nuDust::gen_size_dist()
     PLOGI << "generated dust size distribution";
 }
 
+// load the shock data from the user's specified shock parameters: velocity, temperature, pile up factor
 void
 nuDust::gen_shock_array_frm_val()
 {
@@ -149,6 +152,7 @@ nuDust::gen_shock_array_frm_val()
     PLOGI << "Set up shock arrays from config params";
 }
 
+// load the size ditribution from file
 void
 nuDust::load_sizeDist()
 {
@@ -233,6 +237,7 @@ nuDust::load_sizeDist()
     }
 }
 
+// load the abundance file
 void
 nuDust::load_initial_abundances()
 {
@@ -307,6 +312,7 @@ nuDust::load_initial_abundances()
     PLOGI << "loaded abundance file. loaded " << initial_elements.size() << " abundances.";
 }
 
+// check if SiO2 or CO are specified in the abundance data, if not add them. Convert all Si, O, and C to SiO2 or CO
 void
 nuDust::premake(const int s1, const int s2, const int sp, const int cell_id)
 {
@@ -324,6 +330,7 @@ nuDust::premake(const int s1, const int s2, const int sp, const int cell_id)
   }
 }
 
+// adjust the number density of species to account for pile up
 void
 nuDust::account_for_pileUp()
 {
@@ -339,6 +346,7 @@ nuDust::account_for_pileUp()
     PLOGI << cell_inputs[1].inp_init_abund[0] << " after adjust for time";
 }
 
+// load the sputter parameters and calcuate additional constants needed for thermal and nonthermal sputtering
 void
 nuDust::load_sputter_params()
 {
@@ -426,6 +434,7 @@ nuDust::load_sputter_params()
     PLOGI << "calculated sputtering terms";
 }
 
+// load the trajectory (environment) data
 void
 nuDust::load_environment_data()
 {
@@ -466,7 +475,8 @@ nuDust::load_environment_data()
     }
     PLOGI << "loaded environment file";
 }
-// todo :: rename this somethign more fitting
+
+// load the shock time, temperature, and velocity from the user specified shock file
 void
 nuDust::load_shock_params()
 {
@@ -499,6 +509,7 @@ nuDust::load_shock_params()
     PLOGI << "loaded shock parameters file";
 }
 
+// not currently used. this calculates where (time, cell ID) a shock is identified in the input data.
 void 
 nuDust::find_shock()
 {
@@ -536,6 +547,7 @@ nuDust::find_shock()
     }
 }
 
+// generates the solution vector based on the number of grains, size bins, and gas species
 void
 nuDust::generate_sol_vector()
 {
@@ -556,6 +568,7 @@ nuDust::generate_sol_vector()
     PLOGI << "generated solution vector";
 }
 
+// define the dump and restart file names. needed in order to check if a restart is needed for the cell.
 void 
 nuDust::load_outputFL_names()
 {
@@ -572,6 +585,7 @@ nuDust::load_outputFL_names()
     PLOGI << "data and restart file names defined";
 }
 
+// if a restart file exists for the cell, load data from file
 void
 nuDust::create_restart_cells(int cell_id)
 {
@@ -613,6 +627,7 @@ nuDust::create_restart_cells(int cell_id)
     }
 }
 
+// creates the simulation cells. this checks if there is an output file or restart file. If there are no restart or output file, create cell. If there's a restart file, load that data instead. If there's an output file and no restart, assume that cell has completed integration.
 void
 nuDust::create_simulation_cells()
 {
@@ -630,6 +645,7 @@ nuDust::create_simulation_cells()
     PLOGI << "Created " << cell_inputs.size() << " cells";
 }
 
+// begin calculations
 void
 nuDust::run()
 {  
