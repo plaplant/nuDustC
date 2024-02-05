@@ -156,4 +156,8 @@ If the compiler cannot find required packages or libraries, make sure LD_LIBRARY
 
 Ensure the configuration file points to the location of each input file and contains the needed parameters for the calculation path. 
 
+# Community guidelines
+
+If you use nuDustC++ and need help, submit an issue to the nuDustC++ repository. If you'd like to contribute, just fork and submit a pull request. One of the developers will review your PR.
+
 
