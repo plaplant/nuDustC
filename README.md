@@ -133,7 +133,7 @@ To run a test of nudustc++,
 ./nudustc++ -c data/inputs/test_config.ini
 ```
 
-This will produce data files in teh build directory's "output/" directory and restart data in the "restart/" directory.
+This will produce data files in the build directory's "output/" directory and restart data in the "restart/" directory.
 
 # Restarting a Run
 nuDustC++ automatically checks for restart files when creating each cell. If a restart file is found, that data is loaded into the cell object. If no restart file is found, the cell is initialized with data from the input files. Make sure the same config file used to start the run is selected when restarting. 
