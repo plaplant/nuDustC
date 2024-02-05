@@ -19,7 +19,7 @@ others to do so.*/
 #include <sstream>
 #include <boost/filesystem.hpp>
 
-// intialize the writer class
+// intialize the writer class and define output names
 CellObserver::CellObserver(std::size_t cid,const network* net, configuration* con)
   : cid(cid)
 {
@@ -27,8 +27,8 @@ CellObserver::CellObserver(std::size_t cid,const network* net, configuration* co
   num_spec = net->n_species;
   numBins = con->bin_number;
   modNum = con->mod_number; 
-  m_nstore = con->io_disk_n_steps;
-  m_ndump = con->io_screen_n_steps;
+  m_nrestart = con->io_restart_n_steps;
+  m_ndump = con->io_dump_n_steps;
   ofname = "output/B"+std::to_string(numBins)+"_"+net->network_label +"_"+std::to_string(cid)+".dat";    
   RSname = "restart/restart_B"+std::to_string(numBins)+"_"+net->network_label +"_"+std::to_string(cid)+".dat"; 
 
@@ -38,6 +38,7 @@ CellObserver::CellObserver(std::size_t cid,const network* net, configuration* co
   }  
 }
 
+// dump initial data to the output file
 void CellObserver::init_dump(const cell_state& s)
 {
     m_state = s;
@@ -60,7 +61,7 @@ void CellObserver::init_dump(const cell_state& s)
     ofs.close();
 }
 
-// write data to file
+// write data to the output file
 void
 CellObserver::dump_data(const cell_state& s)
 {
@@ -77,7 +78,7 @@ CellObserver::dump_data(const cell_state& s)
   ofs.close();
 }
 
-// write data to restart file
+// create a restart file with current data
 void
 CellObserver::restart_dump(const cell_state& s)
 {
@@ -115,11 +116,14 @@ CellObserver::operator()(const cell_state& s)
   if (n_called % m_ndump == 0) {
     m_state = s;
     dump_data(s);
+  }
+  if (n_called % m_nrestart == 0) {
+    m_state = s;
     restart_dump(s);
   }
 }
 
-// final writing of data
+// final writing of data at the end of inregartion
 void CellObserver::finalSave (const cell_state& s)
 {   
   m_state = s;
