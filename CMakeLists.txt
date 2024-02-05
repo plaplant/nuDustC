@@ -31,8 +31,6 @@ if(NUDUSTC_ENABLE_OPENMP)
   find_package(OpenMP REQUIRED)
 endif()
 
-find_package(OpenMP REQUIRED)
-
 if(NUDUSTC_ENABLE_MPI)
   find_package(MPI REQUIRED CXX)
 endif()
