@@ -17,12 +17,15 @@ endif()
 
 option(NUDUSTC_ENABLE_OPENMP ON "Use OpenMP for cell/particle parallelization")
 option(NUDUSTC_ENABLE_MPI OFF "Use MPI for cell/particle parallelizaiton")
-
+option(NUDUSTC_USE_SUNDIALS OFF "Use sundials CVODE integrator")
 
 # dependencies
 list(APPEND BOOST_COMPONENTS program_options filesystem serialization)
 find_package(Boost REQUIRED ${BOOST_COMPONENTS})
-#find_package(SUNDIALS 5.8 REQUIRED) 
+
+if(NUDUSTC_USE_SUNDIALS)
+  find_package(SUNDIALS 5.8 REQUIRED)
+endif()
 
 if(NUDUSTC_ENABLE_OPENMP)
   find_package(OpenMP REQUIRED)
@@ -47,30 +50,28 @@ option(NUDUST_BENCHMARK "Enable benchmark wrappers" OFF)
 set(NUD_EXE "nudustc++")
 
 set(NUD_SRCS
-  src/cell.cpp
-  src/cellobserver.cpp
-  src/configuration.cpp
-  src/main.cpp
-  src/network.cpp
-  src/nudust.cpp
-  src/reaction.cpp
-)
+    src/cell.cpp
+    src/cellobserver.cpp
+    src/configuration.cpp
+    src/main.cpp
+    src/network.cpp
+    src/nudust.cpp
+    src/reaction.cpp)
 
 set(NUD_HEADERS
-  include/axis.h
-  include/cell.h
-  include/cellobserver.h
-  include/configuration.h
-  include/constants.h
-  include/elements.h
-  include/makima.h
-  include/network.h
-  include/nudust.h
-  include/reaction.h
-  include/sput_params.h
-  include/sputter.h
-  include/utilities.h
-)
+    include/axis.h
+    include/cell.h
+    include/cellobserver.h
+    include/configuration.h
+    include/constants.h
+    include/elements.h
+    include/makima.h
+    include/network.h
+    include/nudust.h
+    include/reaction.h
+    include/sput_params.h
+    include/sputter.h
+    include/utilities.h)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -82,6 +83,7 @@ target_include_directories(${NUD_EXE} PRIVATE ${PROJECT_SOURCE_DIR}/include)
 
 set(with_mpi "$<BOOL:${NUDUSTC_ENABLE_MPI}>")
 set(with_openmp "$<BOOL:${NUDUSTC_ENABLE_OPENMP}>")
+set(use_sundials "$<BOOL:${NUDUSTC_USE_SUNDIALS}>")
 
 target_link_libraries(
   ${NUD_EXE}
@@ -90,10 +92,16 @@ target_link_libraries(
           Boost::serialization
           Boost::filesystem
           plog::plog
-          #SUNDIALS::cvode
-          #SUNDIALS::nvecserial
+          <<<<<<<
+          HEAD
+          # SUNDIALS::cvode SUNDIALS::nvecserial
+          =======
+          $<${use_sundials}:"SUNDIALS::cvode;SUNDIALS::nvecserial">
+          >>>>>>>
+          8e57e9f
+          (added option to enable/disable sundials build)
           $<${with_mpi}:"MPI::MPI_CXX">
-          ##$<${with_openmp}:"OpenMP::OpenMP_CXX">
+          # $<${with_openmp}:"OpenMP::OpenMP_CXX">
           OpenMP::OpenMP_CXX)
 
 target_compile_definitions(
