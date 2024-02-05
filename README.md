@@ -51,11 +51,16 @@ Required: Config file. This lists the various input information such as data fil
 # Configuration file
 
 ### Integration Parameters
-*ode_dt_0* Initial timestep for integration.
-*ode_abs_err* The Solver's absolute error.
-*ode_rel_err* The Solver's relative error.
-*ode_dt_min* The minimum allowed timestep.
-*de_dt_max* The maximum allowed timestep.
+*ode_dt_0*: Initial timestep for integration.
+
+*ode_abs_err*: The Solver's absolute error.
+
+*ode_rel_err*: The Solver's relative error.
+
+*ode_dt_min*: The minimum allowed timestep.
+
+*de_dt_max*: The maximum allowed timestep.
+
     
 ### Data Files
 *sizeDist_file*: This describes the size distribution for the model. Each cell has one line. Each line is an array of size distribtuions of grain species in the order specified in the header line.
