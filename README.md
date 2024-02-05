@@ -116,3 +116,20 @@ Destruction With Shock Times and Velocities from a file
 
 Destruction With User Input Shock Temperature & Velocity
   Required Input Files: Shock Velocity, Shock Temperature, Shock Time, Pile up factor, Size Distribution File, Abundance File, & Network File
+
+# Testing
+To run a test of nudustc++,
+
+```
+./nudustc++ -c data/inputs/test_config.ini
+```
+
+This will produce data files in teh build directory's "output/" directory and restart data in the "restart/" directory.
+
+# Restarting a Run
+nuDustC++ automatically checks for restart files when creating each cell. If a restart file is found, that data is loaded into the cell object. If no restart file is found, the cell is initialized with data from the input files.
+
+# Common Pitfalls
+
+
+
