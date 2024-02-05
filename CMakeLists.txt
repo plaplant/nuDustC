@@ -22,7 +22,7 @@ option(NUDUSTC_ENABLE_MPI OFF "Use MPI for cell/particle parallelizaiton")
 # dependencies
 list(APPEND BOOST_COMPONENTS program_options filesystem serialization)
 find_package(Boost REQUIRED ${BOOST_COMPONENTS})
-find_package(SUNDIALS 5.8 REQUIRED) 
+#find_package(SUNDIALS 5.8 REQUIRED) 
 
 if(NUDUSTC_ENABLE_OPENMP)
   find_package(OpenMP REQUIRED)
@@ -90,8 +90,8 @@ target_link_libraries(
           Boost::serialization
           Boost::filesystem
           plog::plog
-          SUNDIALS::cvode
-          SUNDIALS::nvecserial
+          #SUNDIALS::cvode
+          #SUNDIALS::nvecserial
           $<${with_mpi}:"MPI::MPI_CXX">
           ##$<${with_openmp}:"OpenMP::OpenMP_CXX">
           OpenMP::OpenMP_CXX)
