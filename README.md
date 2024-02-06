@@ -154,7 +154,7 @@ nuDustC++ automatically checks for restart files when creating each cell. If a r
 # Common Pitfalls
 If the compiler cannot find required packages or libraries, make sure LD_LIBRARY_PATH is up to date and points to the location of each package or library.
 
-Ensure the configuration file points to the location of each input file and contains the needed parameters for the calculation path. 
+Ensure the configuration file points to the accessible location of each input file and contains the necessary parameters for the calculation path. 
 
 Boost Math errors: Some older versions of Boost might not work the Gauss Kronrod Quadrature. We haven't checked any builds older than 1.78.0. If you get math errors, try updating Boost. 
 
